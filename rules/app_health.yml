@@ -1,0 +1,35 @@
+# homelab:app_health_score must stay identical to APP_HEALTH_SCORE in dryvist/homelab-wall's
+# site/lib/queries.js — the wall's own query falls back to that JS expression via
+# `homelab:app_health_score or (...)` whenever this metric is absent, so the two must agree.
+#
+# Scale: 0-9 is the normal range (min(9, round(9 x 24h success ratio))); 10 is reserved for an
+# app that had 100% success over the trailing 30d.
+groups:
+  - name: homelab-app-health
+    rules:
+      - record: homelab:app_health_score
+        expr: >-
+          (
+            (
+              sum by (name) (increase(gatus_results_total{group=~"catalog-.+",group!="catalog-authed",success="true"}[30d]))
+              /
+              sum by (name) (increase(gatus_results_total{group=~"catalog-.+",group!="catalog-authed"}[30d]))
+            ) == bool 1
+          ) * 10
+          +
+          (
+            (
+              sum by (name) (increase(gatus_results_total{group=~"catalog-.+",group!="catalog-authed",success="true"}[30d]))
+              /
+              sum by (name) (increase(gatus_results_total{group=~"catalog-.+",group!="catalog-authed"}[30d]))
+            ) != bool 1
+          ) * clamp_max(
+            round(
+              9 * (
+                sum by (name) (increase(gatus_results_total{group=~"catalog-.+",group!="catalog-authed",success="true"}[24h]))
+                /
+                sum by (name) (increase(gatus_results_total{group=~"catalog-.+",group!="catalog-authed"}[24h]))
+              )
+            ),
+            9
+          )
