@@ -1,5 +1,5 @@
 # Busy % = DCGM_FI_DEV_GPU_UTIL (gauge, percent, from the DCGM exporter) averaged over 5m per accelerator.
-# The two Mac accelerators are not recorded yet: no macmon GPU residency metric name is defined in tracked files.
+# Macs: macmon_gpu_active_ratio (gauge, 0-1, from macmon serve) x 100, averaged over 5m.
 groups:
   - name: accelerator-busy
     rules:
@@ -21,11 +21,20 @@ groups:
               accelerator="gpu-secondary"
             }[5m])
           )
+          or
+          avg by (accelerator) (
+            avg_over_time(macmon_gpu_active_ratio{
+              job="macmon",
+              accelerator=~"mac-primary|mac-secondary"
+            }[5m]) * 100
+          )
 
       - alert: AcceleratorBusyMetricsMissing
         expr: |
           absent(accelerator:busy_percent:avg5m{accelerator="gpu-primary"})
           or absent(accelerator:busy_percent:avg5m{accelerator="gpu-secondary"})
+          or absent(accelerator:busy_percent:avg5m{accelerator="mac-primary"})
+          or absent(accelerator:busy_percent:avg5m{accelerator="mac-secondary"})
         for: 15m
         labels:
           severity: warning
