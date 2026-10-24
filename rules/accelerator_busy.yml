@@ -1,5 +1,5 @@
 # Busy % = DCGM_FI_DEV_GPU_UTIL (gauge, percent, from the DCGM exporter) averaged over 5m per accelerator.
-# Mac accelerators (mac-studio, mbp) are not recorded yet: no macmon GPU residency metric name is defined in tracked files.
+# The two Mac accelerators are not recorded yet: no macmon GPU residency metric name is defined in tracked files.
 groups:
   - name: accelerator-busy
     rules:
@@ -11,21 +11,21 @@ groups:
                 job="dcgm_exporter",
                 guest=~"llm-blackwell-7-96GB-(medium|small)"
               }[5m]),
-              "accelerator", "rtx-pro-6000", "guest", ".+"
+              "accelerator", "gpu-primary", "guest", ".+"
             )
           )
           or
           avg by (accelerator) (
             avg_over_time(DCGM_FI_DEV_GPU_UTIL{
               job="dcgm_exporter",
-              accelerator="rtx-4080"
+              accelerator="gpu-secondary"
             }[5m])
           )
 
       - alert: AcceleratorBusyMetricsMissing
         expr: |
-          absent(accelerator:busy_percent:avg5m{accelerator="rtx-pro-6000"})
-          or absent(accelerator:busy_percent:avg5m{accelerator="rtx-4080"})
+          absent(accelerator:busy_percent:avg5m{accelerator="gpu-primary"})
+          or absent(accelerator:busy_percent:avg5m{accelerator="gpu-secondary"})
         for: 15m
         labels:
           severity: warning
