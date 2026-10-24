@@ -1,0 +1,42 @@
+# Busy % = DCGM_FI_DEV_GPU_UTIL (gauge, percent, from the DCGM exporter) averaged over 5m per accelerator.
+# Mac accelerators (mac-studio, mbp) are not recorded yet: no macmon GPU residency metric name is defined in tracked files.
+groups:
+  - name: accelerator-busy
+    rules:
+      - record: accelerator:busy_percent:avg5m
+        expr: |
+          avg by (accelerator) (
+            label_replace(
+              avg_over_time(DCGM_FI_DEV_GPU_UTIL{
+                job="dcgm_exporter",
+                guest=~"llm-blackwell-7-96GB-(medium|small)"
+              }[5m]),
+              "accelerator", "rtx-pro-6000", "guest", ".+"
+            )
+          )
+          or
+          avg by (accelerator) (
+            avg_over_time(DCGM_FI_DEV_GPU_UTIL{
+              job="dcgm_exporter",
+              accelerator="rtx-4080"
+            }[5m])
+          )
+
+      - alert: AcceleratorBusyMetricsMissing
+        expr: |
+          absent(accelerator:busy_percent:avg5m{accelerator="rtx-pro-6000"})
+          or absent(accelerator:busy_percent:avg5m{accelerator="rtx-4080"})
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Busy metrics missing for {{ $labels.accelerator }}"
+          description: "No accelerator:busy_percent:avg5m series has been present for {{ $labels.accelerator }} for 15 minutes."
+
+      - alert: AcceleratorUnderutilized
+        expr: avg_over_time(accelerator:busy_percent:avg5m[6h]) < 50
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.accelerator }} busy percent is below 50%"
+          description: "The 6-hour average busy percent for {{ $labels.accelerator }} is below 50%."
