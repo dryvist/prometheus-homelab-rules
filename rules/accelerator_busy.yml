@@ -2,6 +2,7 @@
 # Macs: macmon_gpu_active_ratio (gauge, 0-1, from macmon serve) x 100, averaged over 5m.
 groups:
   - name: accelerator-busy
+    interval: 1m
     rules:
       - record: accelerator:busy_percent:avg5m
         expr: |
@@ -9,9 +10,9 @@ groups:
             label_replace(
               avg_over_time(DCGM_FI_DEV_GPU_UTIL{
                 job="dcgm_exporter",
-                guest=~"llm-blackwell-7-96GB-(medium|small)"
+                accelerator=""
               }[5m]),
-              "accelerator", "gpu-primary", "guest", ".+"
+              "accelerator", "gpu-primary", "accelerator", "^$"
             )
           )
           or
