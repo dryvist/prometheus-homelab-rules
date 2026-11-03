@@ -29,24 +29,3 @@ groups:
               accelerator=~"mac-primary|mac-secondary"
             }[5m]) * 100
           )
-
-      - alert: AcceleratorBusyMetricsMissing
-        expr: |
-          absent(accelerator:busy_percent:avg5m{accelerator="gpu-primary"})
-          or absent(accelerator:busy_percent:avg5m{accelerator="gpu-secondary"})
-          or absent(accelerator:busy_percent:avg5m{accelerator="mac-primary"})
-          or absent(accelerator:busy_percent:avg5m{accelerator="mac-secondary"})
-        for: 15m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Busy metrics missing for {{ $labels.accelerator }}"
-          description: "No accelerator:busy_percent:avg5m series has been present for {{ $labels.accelerator }} for 15 minutes."
-
-      - alert: AcceleratorUnderutilized
-        expr: avg_over_time(accelerator:busy_percent:avg5m[6h]) < 50
-        labels:
-          severity: warning
-        annotations:
-          summary: "{{ $labels.accelerator }} busy percent is below 50%"
-          description: "The 6-hour average busy percent for {{ $labels.accelerator }} is below 50%."
