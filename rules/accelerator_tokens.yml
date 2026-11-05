@@ -1,0 +1,64 @@
+# Token-based accelerator utilization KPI.
+#
+# accelerator:generation_tokens_per_second:rate1h is the 1h average generation rate per accelerator:
+#   gpu-primary     vLLM generation tokens.
+#   gpu-secondary   llama.cpp prompt tokens (embedding and reranking workload).
+#   mac-primary     router output tokens for the MLX model, excluding the router health-check team.
+#
+# accelerator:max_generation_tokens_per_second is the maximum generation rate the model serves at its
+#   maximum concurrency with large contexts. provenance="measured" marks a benchmark result;
+#   provenance="provisional" marks a planning value that has not been benchmarked.
+#
+# accelerator:token_utilization:ratio = rate1h / max. The alert fires on its 6h average.
+groups:
+  - name: accelerator-tokens
+    interval: 1m
+    rules:
+      - record: accelerator:generation_tokens_per_second:rate1h
+        expr: |
+          label_replace(
+            sum(rate(vllm:generation_tokens_total{job="llm_gpu_engine"}[1h])),
+            "accelerator", "gpu-primary", "", ""
+          )
+          or
+          label_replace(
+            sum(rate(llamacpp:prompt_tokens_total{job="llm_gpu_engine"}[1h])),
+            "accelerator", "gpu-secondary", "", ""
+          )
+          or
+          label_replace(
+            sum(rate(litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team!="litellm-internal-health-check"}[1h])),
+            "accelerator", "mac-primary", "", ""
+          )
+
+      - record: accelerator:max_generation_tokens_per_second
+        expr: |
+          label_replace(
+            label_replace(vector(431), "accelerator", "gpu-primary", "", ""),
+            "provenance", "provisional", "", ""
+          )
+          or
+          label_replace(
+            label_replace(vector(0), "accelerator", "gpu-secondary", "", ""),
+            "provenance", "provisional", "", ""
+          )
+          or
+          label_replace(
+            label_replace(vector(34), "accelerator", "mac-primary", "", ""),
+            "provenance", "provisional", "", ""
+          )
+
+      - record: accelerator:token_utilization:ratio
+        expr: |
+          accelerator:generation_tokens_per_second:rate1h
+          / on (accelerator)
+          accelerator:max_generation_tokens_per_second
+
+      - alert: AcceleratorTokenUnderutilized
+        expr: avg_over_time(accelerator:token_utilization:ratio[6h]) < 0.5
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.accelerator }} token utilization KPI is below 0.5"
+          description: "The 6-hour average of the token utilization KPI (accelerator:token_utilization:ratio, generation tokens per second over the maximum generation tokens per second) for {{ $labels.accelerator }} is below 0.5."
