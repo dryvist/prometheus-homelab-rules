@@ -2,12 +2,13 @@
 #
 # accelerator:generation_tokens_per_second:rate1h is the 1h average generation rate per accelerator:
 #   gpu-primary     vLLM generation tokens.
-#   gpu-secondary   llama.cpp prompt tokens (embedding and reranking workload).
+#   gpu-secondary   llama.cpp generated tokens (chat workload).
 #   mac-primary     router output tokens for the MLX model, excluding the router health-check team.
 #
 # accelerator:max_generation_tokens_per_second is the maximum generation rate the model serves at its
 #   maximum concurrency with large contexts. provenance="measured" marks a benchmark result;
-#   provenance="provisional" marks a planning value that has not been benchmarked.
+#   provenance="provisional" marks an estimate (single slot, short context, or an observed peak) until a
+#   measured maximum-concurrency, large-context run replaces it.
 #
 # accelerator:token_utilization:ratio = rate1h / max. The alert fires on its 6h average.
 groups:
@@ -22,7 +23,7 @@ groups:
           )
           or
           label_replace(
-            sum(rate(llamacpp:prompt_tokens_total{job="llm_gpu_engine"}[1h])),
+            sum(rate(llamacpp:tokens_predicted_total{job="llm_gpu_engine"}[1h])),
             "accelerator", "gpu-secondary", "", ""
           )
           or
@@ -32,6 +33,9 @@ groups:
           )
 
       - record: accelerator:max_generation_tokens_per_second
+        # gpu-primary: 431 unsourced, replace with measured EvalScope perf run.
+        # gpu-secondary: 27B IQ3_XXS, 1 slot: 716.8 GB/s / ~10.5 GB weights = ~68 tok/s bound x 0.6 median decode efficiency (0.49-0.74 over five public llama.cpp llama-bench tg128 runs on 27B 2-bit quants, prismml-eng/bonsai-demo community-benchmarks) = 41; short context, unmeasured.
+        # mac-primary: 30-day peak of the 5m router output rate for the MLX model (40.67 tok/s, observed), rounded up; not benchmarked.
         expr: |
           label_replace(
             label_replace(vector(431), "accelerator", "gpu-primary", "", ""),
@@ -39,12 +43,12 @@ groups:
           )
           or
           label_replace(
-            label_replace(vector(0), "accelerator", "gpu-secondary", "", ""),
+            label_replace(vector(41), "accelerator", "gpu-secondary", "", ""),
             "provenance", "provisional", "", ""
           )
           or
           label_replace(
-            label_replace(vector(34), "accelerator", "mac-primary", "", ""),
+            label_replace(vector(41), "accelerator", "mac-primary", "", ""),
             "provenance", "provisional", "", ""
           )
 
