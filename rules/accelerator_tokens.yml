@@ -32,6 +32,9 @@ groups:
           )
 
       - record: accelerator:max_generation_tokens_per_second
+        # gpu-primary: 431 unsourced, replace with measured EvalScope perf run.
+        # gpu-secondary: 27B IQ3_XXS, 1 slot: 716.8 GB/s / ~10.5 GB weights = ~68 tok/s bound x 0.6 median decode efficiency (0.49-0.74 over five public llama.cpp llama-bench tg128 runs on 27B 2-bit quants, prismml-eng/bonsai-demo community-benchmarks) = 41; short context, unmeasured.
+        # mac-primary: 30-day peak of the 5m router output rate for the MLX model (40.67 tok/s, observed), rounded up; not benchmarked.
         expr: |
           label_replace(
             label_replace(vector(431), "accelerator", "gpu-primary", "", ""),
@@ -39,12 +42,12 @@ groups:
           )
           or
           label_replace(
-            label_replace(vector(0), "accelerator", "gpu-secondary", "", ""),
+            label_replace(vector(41), "accelerator", "gpu-secondary", "", ""),
             "provenance", "provisional", "", ""
           )
           or
           label_replace(
-            label_replace(vector(34), "accelerator", "mac-primary", "", ""),
+            label_replace(vector(41), "accelerator", "mac-primary", "", ""),
             "provenance", "provisional", "", ""
           )
 
