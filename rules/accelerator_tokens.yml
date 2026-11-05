@@ -2,7 +2,7 @@
 #
 # accelerator:generation_tokens_per_second:rate1h is the 1h average generation rate per accelerator:
 #   gpu-primary     vLLM generation tokens.
-#   gpu-secondary   llama.cpp prompt tokens (embedding and reranking workload).
+#   gpu-secondary   llama.cpp generated tokens (chat workload).
 #   mac-primary     router output tokens for the MLX model, excluding the router health-check team.
 #
 # accelerator:max_generation_tokens_per_second is the maximum generation rate the model serves at its
@@ -22,7 +22,7 @@ groups:
           )
           or
           label_replace(
-            sum(rate(llamacpp:prompt_tokens_total{job="llm_gpu_engine"}[1h])),
+            sum(rate(llamacpp:tokens_predicted_total{job="llm_gpu_engine"}[1h])),
             "accelerator", "gpu-secondary", "", ""
           )
           or
