@@ -7,7 +7,8 @@
 #
 # accelerator:max_generation_tokens_per_second is the maximum generation rate the model serves at its
 #   maximum concurrency with large contexts. provenance="measured" marks a benchmark result;
-#   provenance="provisional" marks a planning value that has not been benchmarked.
+#   provenance="provisional" marks an estimate (single slot, short context, or an observed peak) until a
+#   measured maximum-concurrency, large-context run replaces it.
 #
 # accelerator:token_utilization:ratio = rate1h / max. The alert fires on its 6h average.
 groups:
