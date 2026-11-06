@@ -5,71 +5,71 @@ rule_files:
 evaluation_interval: 15s
 fuzzy_compare: true
 tests:
-  - name: base-name buckets aggregate before interpolation and goodput
+  - name: standard buckets aggregate before interpolation and goodput
     interval: 15s
     input_series:
       - series: >-
-          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:time_to_first_token_seconds_bucket{job="llm_gpu_engine",model_name="v",
           instance="a",le="2.5"}
         values: '0+15x20'
       - series: >-
-          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:time_to_first_token_seconds_bucket{job="llm_gpu_engine",model_name="v",
           instance="a",le="5"}
         values: '0+30x20'
       - series: >-
-          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:time_to_first_token_seconds_bucket{job="llm_gpu_engine",model_name="v",
           instance="a",le="+Inf"}
         values: '0+30x20'
       - series: >-
-          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:time_to_first_token_seconds_bucket{job="llm_gpu_engine",model_name="v",
           accelerator="gpu-primary",instance="b",le="2.5"}
         values: '0+45x20'
       - series: >-
-          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:time_to_first_token_seconds_bucket{job="llm_gpu_engine",model_name="v",
           accelerator="gpu-primary",instance="b",le="5"}
         values: '0+45x20'
       - series: >-
-          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:time_to_first_token_seconds_bucket{job="llm_gpu_engine",model_name="v",
           accelerator="gpu-primary",instance="b",le="+Inf"}
         values: '0+45x20'
       - series: >-
-          vllm:inter_token_latency_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:inter_token_latency_seconds_bucket{job="llm_gpu_engine",model_name="v",
           le="0.1"}
         values: '0+15x20'
       - series: >-
-          vllm:inter_token_latency_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:inter_token_latency_seconds_bucket{job="llm_gpu_engine",model_name="v",
           le="0.5"}
         values: '0+30x20'
       - series: >-
-          vllm:inter_token_latency_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:inter_token_latency_seconds_bucket{job="llm_gpu_engine",model_name="v",
           le="+Inf"}
         values: '0+30x20'
       - series: >-
-          vllm:e2e_request_latency_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:e2e_request_latency_seconds_bucket{job="llm_gpu_engine",model_name="v",
           le="1"}
         values: '0+15x20'
       - series: >-
-          vllm:e2e_request_latency_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:e2e_request_latency_seconds_bucket{job="llm_gpu_engine",model_name="v",
           le="5"}
         values: '0+30x20'
       - series: >-
-          vllm:e2e_request_latency_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:e2e_request_latency_seconds_bucket{job="llm_gpu_engine",model_name="v",
           le="+Inf"}
         values: '0+30x20'
       - series: >-
-          vllm:request_queue_time_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:request_queue_time_seconds_bucket{job="llm_gpu_engine",model_name="v",
           le="0.5"}
         values: '0+15x20'
       - series: >-
-          vllm:request_queue_time_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:request_queue_time_seconds_bucket{job="llm_gpu_engine",model_name="v",
           le="1"}
         values: '0+30x20'
       - series: >-
-          vllm:request_queue_time_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:request_queue_time_seconds_bucket{job="llm_gpu_engine",model_name="v",
           le="+Inf"}
         values: '0+30x20'
       - series: >-
-          vllm:time_to_first_token_seconds{job="other",model_name="v",le="2.5"}
+          vllm:time_to_first_token_seconds_bucket{job="other",model_name="v",le="2.5"}
         values: '0+1500x20'
     promql_expr_test:
       - expr: llm:ttft_seconds:p50_5m
@@ -154,11 +154,11 @@ tests:
     interval: 15s
     input_series:
       - series: >-
-          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:time_to_first_token_seconds_bucket{job="llm_gpu_engine",model_name="v",
           le="2.5"}
         values: '0x20'
       - series: >-
-          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          vllm:time_to_first_token_seconds_bucket{job="llm_gpu_engine",model_name="v",
           le="+Inf"}
         values: '0x20'
     promql_expr_test:

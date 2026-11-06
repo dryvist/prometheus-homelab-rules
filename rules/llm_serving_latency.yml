@@ -1,5 +1,4 @@
 ---
-# The engine exposes classic histogram buckets at base names, without _bucket.
 # Aggregate buckets before quantiles; never average per-instance percentiles.
 groups:
   - name: llm-serving-latency
@@ -9,7 +8,7 @@ groups:
         expr: |
           histogram_quantile(0.50, sum by (accelerator, model, le) (
             label_replace(label_replace(label_join(
-              rate(vllm:time_to_first_token_seconds{
+              rate(vllm:time_to_first_token_seconds_bucket{
                 job="llm_gpu_engine"
               }[5m]), "source_accelerator", "", "accelerator"),
               "model", "$1", "model_name", "(.+)"),
@@ -22,7 +21,7 @@ groups:
         expr: |
           histogram_quantile(0.95, sum by (accelerator, model, le) (
             label_replace(label_replace(label_join(
-              rate(vllm:time_to_first_token_seconds{
+              rate(vllm:time_to_first_token_seconds_bucket{
                 job="llm_gpu_engine"
               }[5m]), "source_accelerator", "", "accelerator"),
               "model", "$1", "model_name", "(.+)"),
@@ -35,7 +34,7 @@ groups:
         expr: |
           histogram_quantile(0.99, sum by (accelerator, model, le) (
             label_replace(label_replace(label_join(
-              rate(vllm:time_to_first_token_seconds{
+              rate(vllm:time_to_first_token_seconds_bucket{
                 job="llm_gpu_engine"
               }[5m]), "source_accelerator", "", "accelerator"),
               "model", "$1", "model_name", "(.+)"),
@@ -48,7 +47,7 @@ groups:
         expr: |
           histogram_quantile(0.50, sum by (accelerator, model, le) (
             label_replace(label_replace(label_join(
-              rate(vllm:inter_token_latency_seconds{
+              rate(vllm:inter_token_latency_seconds_bucket{
                 job="llm_gpu_engine"
               }[5m]), "source_accelerator", "", "accelerator"),
               "model", "$1", "model_name", "(.+)"),
@@ -61,7 +60,7 @@ groups:
         expr: |
           histogram_quantile(0.95, sum by (accelerator, model, le) (
             label_replace(label_replace(label_join(
-              rate(vllm:inter_token_latency_seconds{
+              rate(vllm:inter_token_latency_seconds_bucket{
                 job="llm_gpu_engine"
               }[5m]), "source_accelerator", "", "accelerator"),
               "model", "$1", "model_name", "(.+)"),
@@ -74,7 +73,7 @@ groups:
         expr: |
           histogram_quantile(0.99, sum by (accelerator, model, le) (
             label_replace(label_replace(label_join(
-              rate(vllm:inter_token_latency_seconds{
+              rate(vllm:inter_token_latency_seconds_bucket{
                 job="llm_gpu_engine"
               }[5m]), "source_accelerator", "", "accelerator"),
               "model", "$1", "model_name", "(.+)"),
@@ -87,7 +86,7 @@ groups:
         expr: |
           histogram_quantile(0.50, sum by (accelerator, model, le) (
             label_replace(label_replace(label_join(
-              rate(vllm:e2e_request_latency_seconds{
+              rate(vllm:e2e_request_latency_seconds_bucket{
                 job="llm_gpu_engine"
               }[5m]), "source_accelerator", "", "accelerator"),
               "model", "$1", "model_name", "(.+)"),
@@ -100,7 +99,7 @@ groups:
         expr: |
           histogram_quantile(0.95, sum by (accelerator, model, le) (
             label_replace(label_replace(label_join(
-              rate(vllm:e2e_request_latency_seconds{
+              rate(vllm:e2e_request_latency_seconds_bucket{
                 job="llm_gpu_engine"
               }[5m]), "source_accelerator", "", "accelerator"),
               "model", "$1", "model_name", "(.+)"),
@@ -113,7 +112,7 @@ groups:
         expr: |
           histogram_quantile(0.99, sum by (accelerator, model, le) (
             label_replace(label_replace(label_join(
-              rate(vllm:e2e_request_latency_seconds{
+              rate(vllm:e2e_request_latency_seconds_bucket{
                 job="llm_gpu_engine"
               }[5m]), "source_accelerator", "", "accelerator"),
               "model", "$1", "model_name", "(.+)"),
@@ -126,7 +125,7 @@ groups:
         expr: |
           histogram_quantile(0.95, sum by (accelerator, model, le) (
             label_replace(label_replace(label_join(
-              rate(vllm:request_queue_time_seconds{
+              rate(vllm:request_queue_time_seconds_bucket{
                 job="llm_gpu_engine"
               }[5m]), "source_accelerator", "", "accelerator"),
               "model", "$1", "model_name", "(.+)"),
@@ -135,25 +134,87 @@ groups:
         labels:
           backend: vllm
 
-      - record: llm:ttft_seconds:avg5m
+      - record: llm:ttft_seconds:p50_5m
         expr: |
-          sum by (accelerator, model) (
+          histogram_quantile(0.50, sum by (accelerator, model, le) (
             label_replace(label_join(
-              rate(litellm_llm_api_time_to_first_token_metric_sum{
+              rate(litellm_llm_api_time_to_first_token_metric_bucket{
                 job="llm_router", api_provider!="hosted_vllm",
                 team!="litellm-internal-health-check"
               }[5m]), "mapping", ";", "accelerator", "model"),
               "accelerator", "mac-primary", "mapping",
               "^;mlx-community/Qwen3[.]8-27B-4bit$")
-          ) / (sum by (accelerator, model) (
+          ))
+        labels:
+          backend: router
+
+      - record: llm:ttft_seconds:p95_5m
+        expr: |
+          histogram_quantile(0.95, sum by (accelerator, model, le) (
             label_replace(label_join(
-              rate(litellm_llm_api_time_to_first_token_metric_count{
+              rate(litellm_llm_api_time_to_first_token_metric_bucket{
                 job="llm_router", api_provider!="hosted_vllm",
                 team!="litellm-internal-health-check"
               }[5m]), "mapping", ";", "accelerator", "model"),
               "accelerator", "mac-primary", "mapping",
               "^;mlx-community/Qwen3[.]8-27B-4bit$")
-          ) > 0)
+          ))
+        labels:
+          backend: router
+
+      - record: llm:ttft_seconds:p99_5m
+        expr: |
+          histogram_quantile(0.99, sum by (accelerator, model, le) (
+            label_replace(label_join(
+              rate(litellm_llm_api_time_to_first_token_metric_bucket{
+                job="llm_router", api_provider!="hosted_vllm",
+                team!="litellm-internal-health-check"
+              }[5m]), "mapping", ";", "accelerator", "model"),
+              "accelerator", "mac-primary", "mapping",
+              "^;mlx-community/Qwen3[.]8-27B-4bit$")
+          ))
+        labels:
+          backend: router
+
+      - record: llm:e2e_seconds:p50
+        expr: |
+          histogram_quantile(0.50, sum by (accelerator, model, le) (
+            label_replace(label_join(
+              rate(litellm_request_total_latency_metric_bucket{
+                job="llm_router", api_provider!="hosted_vllm",
+                team!="litellm-internal-health-check"
+              }[5m]), "mapping", ";", "accelerator", "model"),
+              "accelerator", "mac-primary", "mapping",
+              "^;mlx-community/Qwen3[.]8-27B-4bit$")
+          ))
+        labels:
+          backend: router
+
+      - record: llm:e2e_seconds:p95
+        expr: |
+          histogram_quantile(0.95, sum by (accelerator, model, le) (
+            label_replace(label_join(
+              rate(litellm_request_total_latency_metric_bucket{
+                job="llm_router", api_provider!="hosted_vllm",
+                team!="litellm-internal-health-check"
+              }[5m]), "mapping", ";", "accelerator", "model"),
+              "accelerator", "mac-primary", "mapping",
+              "^;mlx-community/Qwen3[.]8-27B-4bit$")
+          ))
+        labels:
+          backend: router
+
+      - record: llm:e2e_seconds:p99
+        expr: |
+          histogram_quantile(0.99, sum by (accelerator, model, le) (
+            label_replace(label_join(
+              rate(litellm_request_total_latency_metric_bucket{
+                job="llm_router", api_provider!="hosted_vllm",
+                team!="litellm-internal-health-check"
+              }[5m]), "mapping", ";", "accelerator", "model"),
+              "accelerator", "mac-primary", "mapping",
+              "^;mlx-community/Qwen3[.]8-27B-4bit$")
+          ))
         labels:
           backend: router
 
@@ -162,14 +223,14 @@ groups:
         expr: |
           sum by (accelerator, model) (
             label_replace(label_replace(label_join(
-              rate(vllm:time_to_first_token_seconds{
+              rate(vllm:time_to_first_token_seconds_bucket{
                 job="llm_gpu_engine", le="2.5"
               }[5m]), "source_accelerator", "", "accelerator"),
               "model", "$1", "model_name", "(.+)"),
               "accelerator", "gpu-primary", "accelerator", "^$")
           ) / (sum by (accelerator, model) (
             label_replace(label_replace(label_join(
-              rate(vllm:time_to_first_token_seconds{
+              rate(vllm:time_to_first_token_seconds_bucket{
                 job="llm_gpu_engine", le="+Inf"
               }[5m]), "source_accelerator", "", "accelerator"),
               "model", "$1", "model_name", "(.+)"),

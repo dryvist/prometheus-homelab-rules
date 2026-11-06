@@ -1,0 +1,151 @@
+---
+# Run with: promtool test rules tests/llm_serving_router_latency.test.yml
+rule_files:
+  - ../rules/llm_serving_latency.yml
+evaluation_interval: 15s
+fuzzy_compare: true
+tests:
+  - name: router aggregates buckets before quantiles and filters traffic
+    interval: 15s
+    input_series:
+      - series: >-
+          litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",api_key_alias="a",le="2.5"}
+        values: '0+15x20'
+      - series: >-
+          litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",api_key_alias="a",le="5"}
+        values: '0+30x20'
+      - series: >-
+          litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",api_key_alias="a",le="+Inf"}
+        values: '0+30x20'
+      - series: >-
+          litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",accelerator="mac-primary",
+          api_key_alias="b",le="2.5"}
+        values: '0+45x20'
+      - series: >-
+          litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",accelerator="mac-primary",
+          api_key_alias="b",le="5"}
+        values: '0+45x20'
+      - series: >-
+          litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",accelerator="mac-primary",
+          api_key_alias="b",le="+Inf"}
+        values: '0+45x20'
+      - series: >-
+          litellm_request_total_latency_metric_bucket{job="llm_router",
+          model="cloud",api_provider="openai",le="1"}
+        values: '0+15x20'
+      - series: >-
+          litellm_request_total_latency_metric_bucket{job="llm_router",
+          model="cloud",api_provider="openai",le="5"}
+        values: '0+30x20'
+      - series: >-
+          litellm_request_total_latency_metric_bucket{job="llm_router",
+          model="cloud",api_provider="openai",le="+Inf"}
+        values: '0+30x20'
+      - series: >-
+          litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",le="+Inf",
+          api_provider="hosted_vllm"}
+        values: '0+1500x20'
+      - series: >-
+          litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",le="+Inf",
+          team="litellm-internal-health-check"}
+        values: '0+1500x20'
+      - series: >-
+          litellm_llm_api_time_to_first_token_metric_bucket{job="other",
+          model="mlx-community/Qwen3.8-27B-4bit",le="+Inf"}
+        values: '0+1500x20'
+      - series: >-
+          litellm_request_total_latency_metric_bucket{job="llm_router",
+          model="cloud",api_provider="hosted_vllm",le="+Inf"}
+        values: '0+1500x20'
+      - series: >-
+          litellm_request_total_latency_metric_bucket{job="llm_router",
+          model="cloud",team="litellm-internal-health-check",le="+Inf"}
+        values: '0+1500x20'
+      - series: >-
+          litellm_request_total_latency_metric_bucket{job="other",
+          model="cloud",le="+Inf"}
+        values: '0+1500x20'
+    promql_expr_test:
+      - expr: llm:ttft_seconds:p50_5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:ttft_seconds:p50_5m{backend="router",
+              accelerator="mac-primary",model="mlx-community/Qwen3.8-27B-4bit"}
+            value: 1.5625
+      - expr: llm:ttft_seconds:p95_5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:ttft_seconds:p95_5m{backend="router",
+              accelerator="mac-primary",model="mlx-community/Qwen3.8-27B-4bit"}
+            value: 4.375
+      - expr: llm:ttft_seconds:p99_5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:ttft_seconds:p99_5m{backend="router",
+              accelerator="mac-primary",model="mlx-community/Qwen3.8-27B-4bit"}
+            value: 4.875
+      - expr: llm:e2e_seconds:p50
+        eval_time: 5m
+        exp_samples:
+          - labels: 'llm:e2e_seconds:p50{backend="router",model="cloud"}'
+            value: 1
+      - expr: llm:e2e_seconds:p95
+        eval_time: 5m
+        exp_samples:
+          - labels: 'llm:e2e_seconds:p95{backend="router",model="cloud"}'
+            value: 4.6
+      - expr: llm:e2e_seconds:p99
+        eval_time: 5m
+        exp_samples:
+          - labels: 'llm:e2e_seconds:p99{backend="router",model="cloud"}'
+            value: 4.92
+
+  - name: router preserves explicit accelerator labels
+    interval: 15s
+    input_series:
+      - series: >-
+          litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",accelerator="mac-secondary",
+          le="1"}
+        values: '0+15x20'
+      - series: >-
+          litellm_llm_api_time_to_first_token_metric_bucket{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",accelerator="mac-secondary",
+          le="+Inf"}
+        values: '0+15x20'
+      - series: >-
+          litellm_request_total_latency_metric_bucket{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",accelerator="mac-secondary",
+          le="5"}
+        values: '0+15x20'
+      - series: >-
+          litellm_request_total_latency_metric_bucket{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",accelerator="mac-secondary",
+          le="+Inf"}
+        values: '0+15x20'
+    promql_expr_test:
+      - expr: llm:ttft_seconds:p95_5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:ttft_seconds:p95_5m{backend="router",
+              accelerator="mac-secondary",model="mlx-community/Qwen3.8-27B-4bit"}
+            value: 0.95
+      - expr: llm:e2e_seconds:p95
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:e2e_seconds:p95{backend="router",accelerator="mac-secondary",
+              model="mlx-community/Qwen3.8-27B-4bit"}
+            value: 4.75
