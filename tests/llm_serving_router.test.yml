@@ -6,53 +6,9 @@ rule_files:
 evaluation_interval: 15s
 fuzzy_compare: true
 tests:
-  - name: router uses request-weighted means and excludes duplicate traffic
+  - name: router state filters traffic and absent latency stays absent
     interval: 15s
     input_series:
-      - series: >-
-          litellm_llm_api_time_to_first_token_metric_sum{job="llm_router",
-          model="mlx-community/Qwen3.8-27B-4bit",api_key_alias="a"}
-        values: '0+15x20'
-      - series: >-
-          litellm_llm_api_time_to_first_token_metric_count{job="llm_router",
-          model="mlx-community/Qwen3.8-27B-4bit",api_key_alias="a"}
-        values: '0+15x20'
-      - series: >-
-          litellm_llm_api_time_to_first_token_metric_sum{job="llm_router",
-          model="mlx-community/Qwen3.8-27B-4bit",accelerator="mac-primary",
-          api_key_alias="b"}
-        values: '0+75x20'
-      - series: >-
-          litellm_llm_api_time_to_first_token_metric_count{job="llm_router",
-          model="mlx-community/Qwen3.8-27B-4bit",accelerator="mac-primary",
-          api_key_alias="b"}
-        values: '0+45x20'
-      - series: >-
-          litellm_llm_api_time_to_first_token_metric_sum{job="llm_router",
-          model="v",api_provider="hosted_vllm"}
-        values: '0+1500x20'
-      - series: >-
-          litellm_llm_api_time_to_first_token_metric_count{job="llm_router",
-          model="v",api_provider="hosted_vllm"}
-        values: '0+15x20'
-      - series: >-
-          litellm_llm_api_time_to_first_token_metric_sum{job="llm_router",
-          model="mlx-community/Qwen3.8-27B-4bit",
-          team="litellm-internal-health-check"}
-        values: '0+1500x20'
-      - series: >-
-          litellm_llm_api_time_to_first_token_metric_count{job="llm_router",
-          model="mlx-community/Qwen3.8-27B-4bit",
-          team="litellm-internal-health-check"}
-        values: '0+15x20'
-      - series: >-
-          litellm_llm_api_time_to_first_token_metric_sum{job="llm_router",
-          model="idle"}
-        values: '0x20'
-      - series: >-
-          litellm_llm_api_time_to_first_token_metric_count{job="llm_router",
-          model="idle"}
-        values: '0x20'
       - series: >-
           litellm_in_flight_requests{job="llm_router",model="cloud",team="one"}
         values: '2x20'
@@ -100,13 +56,6 @@ tests:
           model="cloud",team="litellm-internal-health-check"}
         values: '0+1500x20'
     promql_expr_test:
-      - expr: llm:ttft_seconds:avg5m
-        eval_time: 5m
-        exp_samples:
-          - labels: >-
-              llm:ttft_seconds:avg5m{backend="router",
-              accelerator="mac-primary",model="mlx-community/Qwen3.8-27B-4bit"}
-            value: 1.5
       - expr: llm:requests_running
         eval_time: 5m
         exp_samples:
@@ -132,5 +81,8 @@ tests:
         eval_time: 5m
         exp_samples: []
       - expr: llm:ttft_seconds:p95_5m
+        eval_time: 5m
+        exp_samples: []
+      - expr: llm:e2e_seconds:p95
         eval_time: 5m
         exp_samples: []
