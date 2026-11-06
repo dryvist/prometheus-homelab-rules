@@ -1,0 +1,67 @@
+---
+# Power is hardware-wide: accelerator is its only truthful identity label.
+# Efficiency retains backend/model and uses the whole accelerator's mean power;
+# concurrent models share that denominator, rather than each claiming its power.
+groups:
+  - name: llm-serving-energy
+    interval: 15s
+    rules:
+      - record: llm:decode_tokens_per_second:rate5m
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              rate(vllm:generation_tokens_total{job="llm_gpu_engine"}[5m]),
+              "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-primary", "accelerator", "^$")
+          )
+        labels:
+          backend: vllm
+
+      - record: llm:decode_tokens_per_second:rate5m
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              rate(llamacpp:tokens_predicted_total{job="llm_gpu_engine"}[5m]),
+              "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-secondary", "accelerator", "^$")
+          )
+        labels:
+          backend: llamacpp
+
+      - record: llm:decode_tokens_per_second:rate5m
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_join(
+              rate(litellm_output_tokens_metric_total{
+                job="llm_router", api_provider!="hosted_vllm",
+                team!="litellm-internal-health-check"
+              }[5m]), "mapping", ";", "accelerator", "model"),
+              "accelerator", "mac-primary", "mapping",
+              "^;mlx-community/Qwen3[.]8-27B-4bit$")
+          )
+        labels:
+          backend: router
+
+      - record: llm:power_watts
+        expr: |
+          sum by (accelerator) (
+            label_replace(label_join(
+              DCGM_FI_DEV_POWER_USAGE{job="dcgm_exporter"},
+              "source_accelerator", "", "accelerator"),
+              "accelerator", "gpu-primary", "accelerator", "^$")
+          )
+          or
+          sum by (accelerator) (
+            label_replace(label_join(
+              macmon_gpu_power_watts{job="macmon"},
+              "source_accelerator", "", "accelerator"),
+              "accelerator", "mac-primary", "accelerator", "^$")
+          )
+
+      - record: llm:tokens_per_joule:rate5m
+        expr: |
+          llm:decode_tokens_per_second:rate5m
+          / on (accelerator) group_left()
+          (avg_over_time(llm:power_watts[5m]) > 0)

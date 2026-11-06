@@ -1,0 +1,139 @@
+---
+# Run with: promtool test rules tests/llm_serving_energy.test.yml
+rule_files:
+  - ../rules/llm_serving_energy.yml
+evaluation_interval: 15s
+fuzzy_compare: true
+tests:
+  - name: energy joins hardware power without attributing cloud power
+    interval: 15s
+    input_series:
+      - series: >-
+          vllm:generation_tokens_total{job="llm_gpu_engine",model_name="v"}
+        values: '0+150x20'
+      - series: >-
+          vllm:generation_tokens_total{job="llm_gpu_engine",model_name="other",
+          accelerator="gpu-primary"}
+        values: '0+30x20'
+      - series: >-
+          llamacpp:tokens_predicted_total{job="llm_gpu_engine",model_name="l"}
+        values: '0+75x20'
+      - series: >-
+          litellm_output_tokens_metric_total{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit"}
+        values: '0+30x20'
+      - series: >-
+          litellm_output_tokens_metric_total{job="llm_router",model="cloud"}
+        values: '0+60x20'
+      - series: >-
+          litellm_output_tokens_metric_total{job="llm_router",model="v",
+          api_provider="hosted_vllm"}
+        values: '0+1500x20'
+      - series: >-
+          litellm_output_tokens_metric_total{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",
+          team="litellm-internal-health-check"}
+        values: '0+1500x20'
+      - series: 'DCGM_FI_DEV_POWER_USAGE{job="dcgm_exporter",gpu="0"}'
+        values: '40x20'
+      - series: >-
+          DCGM_FI_DEV_POWER_USAGE{job="dcgm_exporter",gpu="1",
+          accelerator="gpu-primary"}
+        values: '60x20'
+      - series: >-
+          DCGM_FI_DEV_POWER_USAGE{job="dcgm_exporter",gpu="0",
+          accelerator="gpu-secondary"}
+        values: '200x20'
+      - series: 'macmon_gpu_power_watts{job="macmon"}'
+        values: '50x20'
+      - series: >-
+          macmon_gpu_power_watts{job="macmon",accelerator="mac-secondary"}
+        values: '25x20'
+      - series: 'DCGM_FI_DEV_POWER_USAGE{job="other"}'
+        values: '1000x20'
+    promql_expr_test:
+      - expr: llm:power_watts
+        eval_time: 5m
+        exp_samples:
+          - labels: 'llm:power_watts{accelerator="gpu-primary"}'
+            value: 100
+          - labels: 'llm:power_watts{accelerator="gpu-secondary"}'
+            value: 200
+          - labels: 'llm:power_watts{accelerator="mac-primary"}'
+            value: 50
+          - labels: 'llm:power_watts{accelerator="mac-secondary"}'
+            value: 25
+      - expr: llm:decode_tokens_per_second:rate5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:decode_tokens_per_second:rate5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 10
+          - labels: >-
+              llm:decode_tokens_per_second:rate5m{backend="vllm",
+              accelerator="gpu-primary",model="other"}
+            value: 2
+          - labels: >-
+              llm:decode_tokens_per_second:rate5m{backend="llamacpp",
+              accelerator="gpu-secondary",model="l"}
+            value: 5
+          - labels: >-
+              llm:decode_tokens_per_second:rate5m{backend="router",
+              accelerator="mac-primary",model="mlx-community/Qwen3.8-27B-4bit"}
+            value: 2
+          - labels: >-
+              llm:decode_tokens_per_second:rate5m{backend="router",model="cloud"}
+            value: 4
+      - expr: llm:tokens_per_joule:rate5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:tokens_per_joule:rate5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 0.09999999999999998
+          - labels: >-
+              llm:tokens_per_joule:rate5m{backend="vllm",
+              accelerator="gpu-primary",model="other"}
+            value: 0.019999999999999997
+          - labels: >-
+              llm:tokens_per_joule:rate5m{backend="llamacpp",
+              accelerator="gpu-secondary",model="l"}
+            value: 0.024999999999999994
+          - labels: >-
+              llm:tokens_per_joule:rate5m{backend="router",
+              accelerator="mac-primary",model="mlx-community/Qwen3.8-27B-4bit"}
+            value: 0.039999999999999994
+
+  - name: missing and zero power do not fabricate efficiency
+    interval: 15s
+    input_series:
+      - series: >-
+          vllm:generation_tokens_total{job="llm_gpu_engine",model_name="v"}
+        values: '0+30x20'
+      - series: >-
+          llamacpp:tokens_predicted_total{job="llm_gpu_engine",model_name="l"}
+        values: '0+30x20'
+      - series: 'DCGM_FI_DEV_POWER_USAGE{job="dcgm_exporter"}'
+        values: '0x20'
+    promql_expr_test:
+      - expr: llm:tokens_per_joule:rate5m
+        eval_time: 5m
+        exp_samples: []
+
+  - name: efficiency uses mean power over the token rate window
+    interval: 15s
+    input_series:
+      - series: >-
+          vllm:generation_tokens_total{job="llm_gpu_engine",model_name="v"}
+        values: '0+150x20'
+      - series: 'DCGM_FI_DEV_POWER_USAGE{job="dcgm_exporter"}'
+        values: '100x10 300x10'
+    promql_expr_test:
+      - expr: llm:tokens_per_joule:rate5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:tokens_per_joule:rate5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 0.04999999999999999

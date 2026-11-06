@@ -1,0 +1,65 @@
+---
+# Ratios aggregate counters before dividing, never average replica ratios.
+# Zero denominators are omitted: no traffic is not a measured zero ratio.
+# llama.cpp cached-token counts do not establish a cache-query hit ratio.
+groups:
+  - name: llm-serving-cache
+    interval: 15s
+    rules:
+      - record: llm:prefix_cache_hit:ratio5m
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              rate(vllm:prefix_cache_hits_total{job="llm_gpu_engine"}[5m]),
+              "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-primary", "accelerator", "^$")
+          ) / (sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              rate(vllm:prefix_cache_queries_total{job="llm_gpu_engine"}[5m]),
+              "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-primary", "accelerator", "^$")
+          ) > 0)
+        labels:
+          backend: vllm
+
+      - record: llm:spec_decode_acceptance:ratio5m
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              rate(vllm:spec_decode_num_accepted_tokens_total{
+                job="llm_gpu_engine"
+              }[5m]), "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-primary", "accelerator", "^$")
+          ) / (sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              rate(vllm:spec_decode_num_draft_tokens_total{
+                job="llm_gpu_engine"
+              }[5m]), "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-primary", "accelerator", "^$")
+          ) > 0)
+        labels:
+          backend: vllm
+
+      - record: llm:spec_decode_acceptance:ratio5m
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              rate(llamacpp:spec_decode_num_accepted_tokens_total{
+                job="llm_gpu_engine"
+              }[5m]), "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-secondary", "accelerator", "^$")
+          ) / (sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              rate(llamacpp:spec_decode_num_draft_tokens_total{
+                job="llm_gpu_engine"
+              }[5m]), "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-secondary", "accelerator", "^$")
+          ) > 0)
+        labels:
+          backend: llamacpp

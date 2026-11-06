@@ -1,0 +1,119 @@
+---
+# Run with: promtool test rules tests/llm_serving_cache.test.yml
+rule_files:
+  - ../rules/llm_serving_cache.yml
+evaluation_interval: 15s
+fuzzy_compare: true
+tests:
+  - name: cache and speculation use weighted counters and preserve accelerators
+    interval: 15s
+    input_series:
+      - series: >-
+          vllm:prefix_cache_hits_total{job="llm_gpu_engine",model_name="v"}
+        values: '0+15x20'
+      - series: >-
+          vllm:prefix_cache_queries_total{job="llm_gpu_engine",model_name="v"}
+        values: '0+30x20'
+      - series: >-
+          vllm:prefix_cache_hits_total{job="llm_gpu_engine",model_name="v",
+          accelerator="gpu-primary"}
+        values: '0+90x20'
+      - series: >-
+          vllm:prefix_cache_queries_total{job="llm_gpu_engine",model_name="v",
+          accelerator="gpu-primary"}
+        values: '0+90x20'
+      - series: >-
+          vllm:spec_decode_num_accepted_tokens_total{job="llm_gpu_engine",
+          model_name="v"}
+        values: '0+15x20'
+      - series: >-
+          vllm:spec_decode_num_draft_tokens_total{job="llm_gpu_engine",
+          model_name="v"}
+        values: '0+30x20'
+      - series: >-
+          vllm:spec_decode_num_accepted_tokens_total{job="llm_gpu_engine",
+          model_name="v",accelerator="gpu-primary"}
+        values: '0+90x20'
+      - series: >-
+          vllm:spec_decode_num_draft_tokens_total{job="llm_gpu_engine",
+          model_name="v",accelerator="gpu-primary"}
+        values: '0+90x20'
+      - series: >-
+          llamacpp:spec_decode_num_accepted_tokens_total{job="llm_gpu_engine",
+          model_name="l"}
+        values: '0+30x20'
+      - series: >-
+          llamacpp:spec_decode_num_draft_tokens_total{job="llm_gpu_engine",
+          model_name="l"}
+        values: '0+60x20'
+      - series: >-
+          llamacpp:spec_decode_num_accepted_tokens_total{job="llm_gpu_engine",
+          model_name="l",accelerator="gpu-primary"}
+        values: '0+60x20'
+      - series: >-
+          llamacpp:spec_decode_num_draft_tokens_total{job="llm_gpu_engine",
+          model_name="l",accelerator="gpu-primary"}
+        values: '0+90x20'
+      - series: >-
+          vllm:prefix_cache_hits_total{job="other",model_name="v"}
+        values: '0+1500x20'
+    promql_expr_test:
+      - expr: llm:prefix_cache_hit:ratio5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:prefix_cache_hit:ratio5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 0.875
+      - expr: llm:spec_decode_acceptance:ratio5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:spec_decode_acceptance:ratio5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 0.875
+          - labels: >-
+              llm:spec_decode_acceptance:ratio5m{backend="llamacpp",
+              accelerator="gpu-secondary",model="l"}
+            value: 0.5
+          - labels: >-
+              llm:spec_decode_acceptance:ratio5m{backend="llamacpp",
+              accelerator="gpu-primary",model="l"}
+            value: 0.6666666666666666
+
+  - name: zero denominators and absent draft counters remain absent
+    interval: 15s
+    input_series:
+      - series: >-
+          vllm:prefix_cache_hits_total{job="llm_gpu_engine",model_name="idle"}
+        values: '0x20'
+      - series: >-
+          vllm:prefix_cache_queries_total{job="llm_gpu_engine",model_name="idle"}
+        values: '0x20'
+      - series: >-
+          vllm:spec_decode_num_accepted_tokens_total{job="llm_gpu_engine",
+          model_name="idle"}
+        values: '0x20'
+      - series: >-
+          vllm:spec_decode_num_draft_tokens_total{job="llm_gpu_engine",
+          model_name="idle"}
+        values: '0x20'
+      - series: >-
+          llamacpp:spec_decode_num_accepted_tokens_total{job="llm_gpu_engine",
+          model_name="idle"}
+        values: '0x20'
+      - series: >-
+          llamacpp:spec_decode_num_draft_tokens_total{job="llm_gpu_engine",
+          model_name="idle"}
+        values: '0x20'
+      - series: >-
+          llamacpp:spec_decode_num_accepted_tokens_total{job="llm_gpu_engine",
+          model_name="missing"}
+        values: '0+15x20'
+    promql_expr_test:
+      - expr: llm:prefix_cache_hit:ratio5m
+        eval_time: 5m
+        exp_samples: []
+      - expr: llm:spec_decode_acceptance:ratio5m
+        eval_time: 5m
+        exp_samples: []

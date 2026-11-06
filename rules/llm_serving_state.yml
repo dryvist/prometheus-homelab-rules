@@ -1,0 +1,107 @@
+---
+groups:
+  - name: llm-serving-state
+    interval: 15s
+    rules:
+      - record: llm:requests_running
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              vllm:num_requests_running{job="llm_gpu_engine"},
+              "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-primary", "accelerator", "^$")
+          )
+        labels:
+          backend: vllm
+
+      - record: llm:requests_running
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              llamacpp:requests_processing{job="llm_gpu_engine"},
+              "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-secondary", "accelerator", "^$")
+          )
+        labels:
+          backend: llamacpp
+
+      - record: llm:requests_running
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_join(
+              litellm_in_flight_requests{
+                job="llm_router", api_provider!="hosted_vllm",
+                team!="litellm-internal-health-check"
+              }, "mapping", ";", "accelerator", "model"),
+              "accelerator", "mac-primary", "mapping",
+              "^;mlx-community/Qwen3[.]8-27B-4bit$")
+          )
+        labels:
+          backend: router
+
+      - record: llm:requests_waiting
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              vllm:num_requests_waiting{job="llm_gpu_engine"},
+              "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-primary", "accelerator", "^$")
+          )
+        labels:
+          backend: vllm
+
+      - record: llm:requests_waiting
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              llamacpp:requests_deferred{job="llm_gpu_engine"},
+              "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-secondary", "accelerator", "^$")
+          )
+        labels:
+          backend: llamacpp
+
+      - record: llm:requests_per_second:rate1m
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_join(
+              rate(litellm_proxy_total_requests_metric_total{
+                job="llm_router", api_provider!="hosted_vllm",
+                team!="litellm-internal-health-check"
+              }[1m]), "mapping", ";", "accelerator", "model"),
+              "accelerator", "mac-primary", "mapping",
+              "^;mlx-community/Qwen3[.]8-27B-4bit$")
+          )
+        labels:
+          backend: router
+
+      - record: llm:errors_per_second:rate1m
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_join(
+              rate(litellm_proxy_failed_requests_metric_total{
+                job="llm_router", api_provider!="hosted_vllm",
+                team!="litellm-internal-health-check"
+              }[1m]), "mapping", ";", "accelerator", "model"),
+              "accelerator", "mac-primary", "mapping",
+              "^;mlx-community/Qwen3[.]8-27B-4bit$")
+          )
+        labels:
+          backend: router
+
+      - record: llm:kv_cache_usage:ratio
+        # Equal-weight mean across engine replicas; source is already 0..1.
+        expr: |
+          avg by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              vllm:kv_cache_usage_perc{job="llm_gpu_engine"},
+              "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-primary", "accelerator", "^$")
+          )
+        labels:
+          backend: vllm

@@ -1,0 +1,167 @@
+---
+# Run with: promtool test rules tests/llm_serving_latency.test.yml
+rule_files:
+  - ../rules/llm_serving_latency.yml
+evaluation_interval: 15s
+fuzzy_compare: true
+tests:
+  - name: base-name buckets aggregate before interpolation and goodput
+    interval: 15s
+    input_series:
+      - series: >-
+          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          instance="a",le="2.5"}
+        values: '0+15x20'
+      - series: >-
+          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          instance="a",le="5"}
+        values: '0+30x20'
+      - series: >-
+          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          instance="a",le="+Inf"}
+        values: '0+30x20'
+      - series: >-
+          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          accelerator="gpu-primary",instance="b",le="2.5"}
+        values: '0+45x20'
+      - series: >-
+          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          accelerator="gpu-primary",instance="b",le="5"}
+        values: '0+45x20'
+      - series: >-
+          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          accelerator="gpu-primary",instance="b",le="+Inf"}
+        values: '0+45x20'
+      - series: >-
+          vllm:inter_token_latency_seconds{job="llm_gpu_engine",model_name="v",
+          le="0.1"}
+        values: '0+15x20'
+      - series: >-
+          vllm:inter_token_latency_seconds{job="llm_gpu_engine",model_name="v",
+          le="0.5"}
+        values: '0+30x20'
+      - series: >-
+          vllm:inter_token_latency_seconds{job="llm_gpu_engine",model_name="v",
+          le="+Inf"}
+        values: '0+30x20'
+      - series: >-
+          vllm:e2e_request_latency_seconds{job="llm_gpu_engine",model_name="v",
+          le="1"}
+        values: '0+15x20'
+      - series: >-
+          vllm:e2e_request_latency_seconds{job="llm_gpu_engine",model_name="v",
+          le="5"}
+        values: '0+30x20'
+      - series: >-
+          vllm:e2e_request_latency_seconds{job="llm_gpu_engine",model_name="v",
+          le="+Inf"}
+        values: '0+30x20'
+      - series: >-
+          vllm:request_queue_time_seconds{job="llm_gpu_engine",model_name="v",
+          le="0.5"}
+        values: '0+15x20'
+      - series: >-
+          vllm:request_queue_time_seconds{job="llm_gpu_engine",model_name="v",
+          le="1"}
+        values: '0+30x20'
+      - series: >-
+          vllm:request_queue_time_seconds{job="llm_gpu_engine",model_name="v",
+          le="+Inf"}
+        values: '0+30x20'
+      - series: >-
+          vllm:time_to_first_token_seconds{job="other",model_name="v",le="2.5"}
+        values: '0+1500x20'
+    promql_expr_test:
+      - expr: llm:ttft_seconds:p50_5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:ttft_seconds:p50_5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 1.5625
+      - expr: llm:ttft_seconds:p95_5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:ttft_seconds:p95_5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 4.375
+      - expr: llm:ttft_seconds:p99_5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:ttft_seconds:p99_5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 4.875
+      - expr: llm:itl_seconds:p50_5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:itl_seconds:p50_5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 0.1
+      - expr: llm:itl_seconds:p95_5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:itl_seconds:p95_5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 0.46
+      - expr: llm:itl_seconds:p99_5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:itl_seconds:p99_5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 0.492
+      - expr: llm:e2e_seconds:p50_5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:e2e_seconds:p50_5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 1
+      - expr: llm:e2e_seconds:p95_5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:e2e_seconds:p95_5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 4.6
+      - expr: llm:e2e_seconds:p99_5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:e2e_seconds:p99_5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 4.92
+      - expr: llm:queue_seconds:p95_5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:queue_seconds:p95_5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 0.95
+      - expr: llm:goodput:ratio5m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:goodput:ratio5m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 0.8
+
+  - name: no requests do not manufacture goodput
+    interval: 15s
+    input_series:
+      - series: >-
+          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          le="2.5"}
+        values: '0x20'
+      - series: >-
+          vllm:time_to_first_token_seconds{job="llm_gpu_engine",model_name="v",
+          le="+Inf"}
+        values: '0x20'
+    promql_expr_test:
+      - expr: llm:goodput:ratio5m
+        eval_time: 5m
+        exp_samples: []

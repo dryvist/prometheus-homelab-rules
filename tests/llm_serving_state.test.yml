@@ -1,0 +1,74 @@
+---
+# Run with: promtool test rules tests/llm_serving_state.test.yml
+rule_files:
+  - ../rules/llm_serving_state.yml
+evaluation_interval: 15s
+fuzzy_compare: true
+tests:
+  - name: gauges sum queues and average cache across engine replicas
+    interval: 15s
+    input_series:
+      - series: >-
+          vllm:num_requests_running{job="llm_gpu_engine",model_name="v"}
+        values: '2x20'
+      - series: >-
+          vllm:num_requests_running{job="llm_gpu_engine",model_name="v",
+          accelerator="gpu-primary"}
+        values: '3x20'
+      - series: >-
+          llamacpp:requests_processing{job="llm_gpu_engine",model_name="l"}
+        values: '1x20'
+      - series: >-
+          llamacpp:requests_processing{job="llm_gpu_engine",model_name="l",
+          accelerator="gpu-primary"}
+        values: '4x20'
+      - series: >-
+          vllm:num_requests_waiting{job="llm_gpu_engine",model_name="v"}
+        values: '3x20'
+      - series: >-
+          llamacpp:requests_deferred{job="llm_gpu_engine",model_name="l"}
+        values: '2x20'
+      - series: >-
+          vllm:kv_cache_usage_perc{job="llm_gpu_engine",model_name="v"}
+        values: '0.2x20'
+      - series: >-
+          vllm:kv_cache_usage_perc{job="llm_gpu_engine",model_name="v",
+          accelerator="gpu-primary"}
+        values: '0.8x20'
+      - series: >-
+          vllm:num_requests_running{job="other",model_name="v"}
+        values: '100x20'
+    promql_expr_test:
+      - expr: llm:requests_running
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:requests_running{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 5
+          - labels: >-
+              llm:requests_running{backend="llamacpp",
+              accelerator="gpu-secondary",model="l"}
+            value: 1
+          - labels: >-
+              llm:requests_running{backend="llamacpp",
+              accelerator="gpu-primary",model="l"}
+            value: 4
+      - expr: llm:requests_waiting
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:requests_waiting{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 3
+          - labels: >-
+              llm:requests_waiting{backend="llamacpp",
+              accelerator="gpu-secondary",model="l"}
+            value: 2
+      - expr: llm:kv_cache_usage:ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:kv_cache_usage:ratio{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 0.5
