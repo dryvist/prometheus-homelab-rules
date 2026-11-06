@@ -1,0 +1,118 @@
+# Run with: promtool test rules tests/accelerator_tokens.test.yml
+rule_files:
+  - ../rules/accelerator_tokens.yml
+
+evaluation_interval: 1m
+fuzzy_compare: true
+
+tests:
+  - name: source labels survive aggregation and engine changes
+    interval: 1m
+    input_series:
+      - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary", model="a"}'
+        values: '0+23580x60'
+      - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary", model="b"}'
+        values: '0+24000x60'
+      - series: 'llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator="gpu-primary", model="c"}'
+        values: '0+6000x60'
+      - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", accelerator="gpu-secondary", model="d"}'
+        values: '0+600x60'
+      - series: 'llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator="gpu-secondary", model="e"}'
+        values: '0+1860x60'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="mac-primary", model="mlx-community/Qwen3.8-27B-4bit", team="tier-0"}'
+        values: '0+1200x60'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="mac-primary", model="mlx-community/Qwen3.8-27B-4bit", team="tier-2"}'
+        values: '0+1260x60'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="mac-primary", model="mlx-community/Qwen3.8-27B-4bit", team="litellm-internal-health-check"}'
+        values: '0+6000x60'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="mac-secondary", model="mlx-community/Qwen3.8-27B-4bit", team="tier-0"}'
+        values: '0+4920x60'
+      - series: 'vllm:generation_tokens_total{job="other", accelerator="gpu-primary"}'
+        values: '0+6000x60'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="gpu-primary", model="other", team="tier-0"}'
+        values: '0+6000x60'
+    promql_expr_test:
+      - expr: accelerator:generation_tokens_per_second:rate1h
+        eval_time: 1h
+        exp_samples:
+          - labels: 'accelerator:generation_tokens_per_second:rate1h{accelerator="gpu-primary"}'
+            value: 893
+          - labels: 'accelerator:generation_tokens_per_second:rate1h{accelerator="gpu-secondary"}'
+            value: 41
+          - labels: 'accelerator:generation_tokens_per_second:rate1h{accelerator="mac-primary"}'
+            value: 41
+          - labels: 'accelerator:generation_tokens_per_second:rate1h{accelerator="mac-secondary"}'
+            value: 82
+      - expr: accelerator:max_generation_tokens_per_second
+        eval_time: 1h
+        exp_samples:
+          - labels: 'accelerator:max_generation_tokens_per_second{accelerator="gpu-primary", provenance="measured"}'
+            value: 893
+          - labels: 'accelerator:max_generation_tokens_per_second{accelerator="gpu-secondary", provenance="provisional"}'
+            value: 41
+          - labels: 'accelerator:max_generation_tokens_per_second{accelerator="mac-primary", provenance="provisional"}'
+            value: 41
+      - expr: accelerator:token_utilization:ratio
+        eval_time: 1h
+        exp_samples:
+          - labels: 'accelerator:token_utilization:ratio{accelerator="gpu-primary"}'
+            value: 1
+          - labels: 'accelerator:token_utilization:ratio{accelerator="gpu-secondary"}'
+            value: 1
+          - labels: 'accelerator:token_utilization:ratio{accelerator="mac-primary"}'
+            value: 1
+
+  - name: unlabeled sources retain their default accelerator
+    interval: 1m
+    input_series:
+      - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", model="a"}'
+        values: '0+26820x60'
+      - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", model="b"}'
+        values: '0+26760x60'
+      - series: 'llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator=""}'
+        values: '0+2460x60'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team="tier-1"}'
+        values: '0+2460x60'
+    promql_expr_test:
+      - expr: accelerator:token_utilization:ratio
+        eval_time: 1h
+        exp_samples:
+          - labels: 'accelerator:token_utilization:ratio{accelerator="gpu-primary"}'
+            value: 1
+          - labels: 'accelerator:token_utilization:ratio{accelerator="gpu-secondary"}'
+            value: 1
+          - labels: 'accelerator:token_utilization:ratio{accelerator="mac-primary"}'
+            value: 1
+
+  - name: idle sources report zero utilization
+    interval: 1m
+    input_series:
+      - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '0x60'
+      - series: 'llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator="gpu-secondary"}'
+        values: '0x60'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="mac-primary", model="mlx-community/Qwen3.8-27B-4bit", team="tier-0"}'
+        values: '0x60'
+    promql_expr_test:
+      - expr: accelerator:token_utilization:ratio
+        eval_time: 1h
+        exp_samples:
+          - labels: 'accelerator:token_utilization:ratio{accelerator="gpu-primary"}'
+            value: 0
+          - labels: 'accelerator:token_utilization:ratio{accelerator="gpu-secondary"}'
+            value: 0
+          - labels: 'accelerator:token_utilization:ratio{accelerator="mac-primary"}'
+            value: 0
+
+  - name: health checks alone do not create utilization
+    interval: 1m
+    input_series:
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team="litellm-internal-health-check"}'
+        values: '0+2460x60'
+    promql_expr_test:
+      - expr: accelerator:generation_tokens_per_second:rate1h
+        eval_time: 1h
+        exp_samples: []
+      - expr: accelerator:token_utilization:ratio
+        eval_time: 1h
+        exp_samples: []

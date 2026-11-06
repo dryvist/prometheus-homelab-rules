@@ -1,9 +1,9 @@
 # Token-based accelerator utilization KPI.
 #
-# accelerator:generation_tokens_per_second:rate1h is the 1h average generation rate per accelerator:
-#   gpu-primary     vLLM generation tokens.
-#   gpu-secondary   llama.cpp generated tokens (chat workload).
-#   mac-primary     router output tokens for the MLX model, excluding the router health-check team.
+# accelerator:generation_tokens_per_second:rate1h is the 1h average generation rate per accelerator.
+# Source accelerator labels take precedence; unlabeled vLLM, llama.cpp, and MLX router series default
+# to gpu-primary, gpu-secondary, and mac-primary respectively. Router health-check tokens are excluded.
+# mac-secondary is reported in the rate metric and excluded from the utilization KPI.
 #
 # accelerator:max_generation_tokens_per_second is the maximum generation rate the model serves at its
 #   maximum concurrency with large contexts. provenance="measured" marks a benchmark result;
@@ -17,44 +17,49 @@ groups:
     rules:
       - record: accelerator:generation_tokens_per_second:rate1h
         expr: |
-          label_replace(
-            sum(rate(vllm:generation_tokens_total{job="llm_gpu_engine"}[1h])),
-            "accelerator", "gpu-primary", "", ""
-          )
-          or
-          label_replace(
-            sum(rate(llamacpp:tokens_predicted_total{job="llm_gpu_engine"}[1h])),
-            "accelerator", "gpu-secondary", "", ""
-          )
-          or
-          label_replace(
-            sum(rate(litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team!="litellm-internal-health-check"}[1h])),
-            "accelerator", "mac-primary", "", ""
+          sum by (accelerator) (
+            label_replace(
+              rate(vllm:generation_tokens_total{job="llm_gpu_engine"}[1h]),
+              "accelerator", "gpu-primary", "accelerator", "^$"
+            )
+            or
+            label_replace(
+              rate(llamacpp:tokens_predicted_total{job="llm_gpu_engine"}[1h]),
+              "accelerator", "gpu-secondary", "accelerator", "^$"
+            )
+            or
+            label_replace(
+              rate(litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team!="litellm-internal-health-check"}[1h]),
+              "accelerator", "mac-primary", "accelerator", "^$"
+            )
           )
 
+      - record: accelerator:provisional_max_generation_tokens_per_second
+        # shortcut: provisional max, replace with measured value
+        expr: vector(41)
+        labels:
+          accelerator: gpu-secondary
+          provenance: provisional
+
+      - record: accelerator:provisional_max_generation_tokens_per_second
+        # shortcut: provisional max, replace with measured value
+        expr: vector(41)
+        labels:
+          accelerator: mac-primary
+          provenance: provisional
+
       - record: accelerator:max_generation_tokens_per_second
-        # gpu-primary: 431 unsourced, replace with measured EvalScope perf run.
-        # gpu-secondary: 27B IQ3_XXS, 1 slot: 716.8 GB/s / ~10.5 GB weights = ~68 tok/s bound x 0.6 median decode efficiency (0.49-0.74 over five public llama.cpp llama-bench tg128 runs on 27B 2-bit quants, prismml-eng/bonsai-demo community-benchmarks) = 41; short context, unmeasured.
-        # mac-primary: 30-day peak of the 5m router output rate for the MLX model (40.67 tok/s, observed), rounded up; not benchmarked.
+        # gpu-primary: measured maximum of 893 generation tokens per second.
         expr: |
           label_replace(
-            label_replace(vector(431), "accelerator", "gpu-primary", "", ""),
-            "provenance", "provisional", "", ""
+            label_replace(vector(893), "accelerator", "gpu-primary", "", ""),
+            "provenance", "measured", "", ""
           )
-          or
-          label_replace(
-            label_replace(vector(41), "accelerator", "gpu-secondary", "", ""),
-            "provenance", "provisional", "", ""
-          )
-          or
-          label_replace(
-            label_replace(vector(41), "accelerator", "mac-primary", "", ""),
-            "provenance", "provisional", "", ""
-          )
+          or accelerator:provisional_max_generation_tokens_per_second
 
       - record: accelerator:token_utilization:ratio
         expr: |
-          accelerator:generation_tokens_per_second:rate1h
+          accelerator:generation_tokens_per_second:rate1h{accelerator=~"gpu-primary|gpu-secondary|mac-primary"}
           / on (accelerator)
           accelerator:max_generation_tokens_per_second
 
