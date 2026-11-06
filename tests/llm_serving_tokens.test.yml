@@ -1,0 +1,165 @@
+---
+# Run with: promtool test rules tests/llm_serving_tokens.test.yml
+rule_files:
+  - ../rules/llm_serving_tokens.yml
+evaluation_interval: 15s
+fuzzy_compare: true
+tests:
+  - name: normalize models and accelerators without duplicate router tokens
+    interval: 15s
+    input_series:
+      - series: >-
+          vllm:generation_tokens_total{job="llm_gpu_engine",model_name="v",
+          instance="a"}
+        values: '0+30x20'
+      - series: >-
+          vllm:generation_tokens_total{job="llm_gpu_engine",model_name="v",
+          accelerator="gpu-primary",instance="b"}
+        values: '0+60x20'
+      - series: >-
+          vllm:generation_tokens_total{job="llm_gpu_engine",model_name="v",
+          accelerator="gpu-secondary"}
+        values: '0+15x20'
+      - series: >-
+          llamacpp:tokens_predicted_total{job="llm_gpu_engine",model_name="l"}
+        values: '0+15x20'
+      - series: >-
+          llamacpp:tokens_predicted_total{job="llm_gpu_engine",model_name="l",
+          accelerator="gpu-primary"}
+        values: '0+45x20'
+      - series: >-
+          vllm:prompt_tokens_total{job="llm_gpu_engine",model_name="v",
+          instance="a"}
+        values: '0+150x20'
+      - series: >-
+          vllm:prompt_tokens_total{job="llm_gpu_engine",model_name="v",
+          accelerator="gpu-primary",instance="b"}
+        values: '0+300x20'
+      - series: >-
+          llamacpp:prompt_tokens_total{job="llm_gpu_engine",model_name="l"}
+        values: '0+30x20'
+      - series: >-
+          litellm_output_tokens_metric_total{job="llm_router",model="cloud",
+          api_provider="openai",team="one",api_key_alias="a"}
+        values: '0+45x20'
+      - series: >-
+          litellm_output_tokens_metric_total{job="llm_router",model="cloud",
+          api_provider="openai",team="two",api_key_alias="b"}
+        values: '0+15x20'
+      - series: >-
+          litellm_output_tokens_metric_total{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit"}
+        values: '0+60x20'
+      - series: >-
+          litellm_output_tokens_metric_total{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",accelerator="mac-secondary"}
+        values: '0+120x20'
+      - series: >-
+          litellm_output_tokens_metric_total{job="llm_router",model="v",
+          api_provider="hosted_vllm"}
+        values: '0+1500x20'
+      - series: >-
+          litellm_output_tokens_metric_total{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit",
+          team="litellm-internal-health-check"}
+        values: '0+1500x20'
+      - series: >-
+          vllm:generation_tokens_total{job="other",model_name="v"}
+        values: '0+1500x20'
+      - series: >-
+          litellm_input_tokens_metric_total{job="llm_router",model="cloud"}
+        values: '0+150x20'
+      - series: >-
+          litellm_input_tokens_metric_total{job="llm_router",
+          model="mlx-community/Qwen3.8-27B-4bit"}
+        values: '0+30x20'
+      - series: >-
+          litellm_input_tokens_metric_total{job="llm_router",model="v",
+          api_provider="hosted_vllm"}
+        values: '0+1500x20'
+      - series: >-
+          litellm_input_tokens_metric_total{job="llm_router",model="cloud",
+          team="litellm-internal-health-check"}
+        values: '0+1500x20'
+    promql_expr_test:
+      - expr: llm:decode_tokens_per_second:rate1m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:decode_tokens_per_second:rate1m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 6
+          - labels: >-
+              llm:decode_tokens_per_second:rate1m{backend="vllm",
+              accelerator="gpu-secondary",model="v"}
+            value: 1
+          - labels: >-
+              llm:decode_tokens_per_second:rate1m{backend="llamacpp",
+              accelerator="gpu-secondary",model="l"}
+            value: 1
+          - labels: >-
+              llm:decode_tokens_per_second:rate1m{backend="llamacpp",
+              accelerator="gpu-primary",model="l"}
+            value: 3
+          - labels: >-
+              llm:decode_tokens_per_second:rate1m{backend="router",model="cloud"}
+            value: 4
+          - labels: >-
+              llm:decode_tokens_per_second:rate1m{backend="router",
+              accelerator="mac-primary",model="mlx-community/Qwen3.8-27B-4bit"}
+            value: 4
+          - labels: >-
+              llm:decode_tokens_per_second:rate1m{backend="router",
+              accelerator="mac-secondary",model="mlx-community/Qwen3.8-27B-4bit"}
+            value: 8
+      - expr: llm:prefill_tokens_per_second:rate1m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:prefill_tokens_per_second:rate1m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 29.999999999999993
+          - labels: >-
+              llm:prefill_tokens_per_second:rate1m{backend="llamacpp",
+              accelerator="gpu-secondary",model="l"}
+            value: 1.9999999999999998
+          - labels: >-
+              llm:prefill_tokens_per_second:rate1m{backend="router",model="cloud"}
+            value: 9.999999999999998
+          - labels: >-
+              llm:prefill_tokens_per_second:rate1m{backend="router",
+              accelerator="mac-primary",model="mlx-community/Qwen3.8-27B-4bit"}
+            value: 1.9999999999999998
+
+  - name: rate handles counter resets before aggregation
+    interval: 15s
+    input_series:
+      - series: >-
+          vllm:generation_tokens_total{job="llm_gpu_engine",model_name="v"}
+        values: '0 30 60 15 45'
+    promql_expr_test:
+      - expr: llm:decode_tokens_per_second:rate1m
+        eval_time: 1m
+        exp_samples:
+          - labels: >-
+              llm:decode_tokens_per_second:rate1m{backend="vllm",
+              accelerator="gpu-primary",model="v"}
+            value: 1.6666666666666667
+
+  - name: idle tokens remain zero and absent engines remain absent
+    interval: 15s
+    input_series:
+      - series: >-
+          llamacpp:tokens_predicted_total{job="llm_gpu_engine",model_name="l"}
+        values: '0x20'
+    promql_expr_test:
+      - expr: llm:decode_tokens_per_second:rate1m
+        eval_time: 5m
+        exp_samples:
+          - labels: >-
+              llm:decode_tokens_per_second:rate1m{backend="llamacpp",
+              accelerator="gpu-secondary",model="l"}
+            value: 0
+      - expr: llm:prefill_tokens_per_second:rate1m
+        eval_time: 5m
+        exp_samples: []

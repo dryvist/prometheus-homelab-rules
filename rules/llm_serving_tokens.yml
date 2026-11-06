@@ -1,0 +1,84 @@
+---
+# Engine model_name becomes model; source accelerator labels take precedence.
+# Router series exclude local vLLM and internal health-check traffic.
+# Only the MLX model identified by accelerator_tokens.yml gets a Mac default.
+# Transient source_accelerator prevents label collisions before aggregation.
+groups:
+  - name: llm-serving-tokens
+    interval: 15s
+    rules:
+      - record: llm:decode_tokens_per_second:rate1m
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              rate(vllm:generation_tokens_total{job="llm_gpu_engine"}[1m]),
+              "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-primary", "accelerator", "^$")
+          )
+        labels:
+          backend: vllm
+
+      - record: llm:decode_tokens_per_second:rate1m
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              rate(llamacpp:tokens_predicted_total{job="llm_gpu_engine"}[1m]),
+              "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-secondary", "accelerator", "^$")
+          )
+        labels:
+          backend: llamacpp
+
+      - record: llm:decode_tokens_per_second:rate1m
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_join(
+              rate(litellm_output_tokens_metric_total{
+                job="llm_router", api_provider!="hosted_vllm",
+                team!="litellm-internal-health-check"
+              }[1m]), "mapping", ";", "accelerator", "model"),
+              "accelerator", "mac-primary", "mapping",
+              "^;mlx-community/Qwen3[.]8-27B-4bit$")
+          )
+        labels:
+          backend: router
+
+      - record: llm:prefill_tokens_per_second:rate1m
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              rate(vllm:prompt_tokens_total{job="llm_gpu_engine"}[1m]),
+              "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-primary", "accelerator", "^$")
+          )
+        labels:
+          backend: vllm
+
+      - record: llm:prefill_tokens_per_second:rate1m
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_replace(label_join(
+              rate(llamacpp:prompt_tokens_total{job="llm_gpu_engine"}[1m]),
+              "source_accelerator", "", "accelerator"),
+              "model", "$1", "model_name", "(.+)"),
+              "accelerator", "gpu-secondary", "accelerator", "^$")
+          )
+        labels:
+          backend: llamacpp
+
+      - record: llm:prefill_tokens_per_second:rate1m
+        expr: |
+          sum by (accelerator, model) (
+            label_replace(label_join(
+              rate(litellm_input_tokens_metric_total{
+                job="llm_router", api_provider!="hosted_vllm",
+                team!="litellm-internal-health-check"
+              }[1m]), "mapping", ";", "accelerator", "model"),
+              "accelerator", "mac-primary", "mapping",
+              "^;mlx-community/Qwen3[.]8-27B-4bit$")
+          )
+        labels:
+          backend: router
