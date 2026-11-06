@@ -1,0 +1,161 @@
+---
+# Run with: promtool test rules tests/telemetry_health.test.yml
+rule_files:
+  - ../rules/telemetry_health.yml
+
+evaluation_interval: 15s
+fuzzy_compare: true
+
+tests:
+  - name: job aggregation and per-scrape series additions
+    interval: 15s
+    input_series:
+      - series: 'up{job="engine", instance="a"}'
+        values: '1x20'
+      - series: 'up{job="engine", instance="b"}'
+        values: '0x20'
+      - series: 'up{job="router", instance="c"}'
+        values: '1x20'
+      - series: 'scrape_duration_seconds{job="engine", instance="a"}'
+        values: '0.1x20'
+      - series: 'scrape_duration_seconds{job="engine", instance="b"}'
+        values: '0.4x20'
+      - series: 'scrape_samples_scraped{job="engine", instance="a"}'
+        values: '100x20'
+      - series: 'scrape_samples_scraped{job="engine", instance="b"}'
+        values: '50x20'
+      - series: 'scrape_series_added{job="engine", instance="a"}'
+        values: '0 30 0x18 0'
+      - series: 'scrape_series_added{job="engine", instance="b"}'
+        values: '0 0 60 0x17 0'
+    promql_expr_test:
+      - expr: telemetry:target_up:ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'telemetry:target_up:ratio{job="engine"}'
+            value: 0.5
+          - labels: 'telemetry:target_up:ratio{job="router"}'
+            value: 1
+      - expr: telemetry:scrape_duration_seconds:max
+        eval_time: 5m
+        exp_samples:
+          - labels: 'telemetry:scrape_duration_seconds:max{job="engine"}'
+            value: 0.4
+      - expr: telemetry:samples_scraped:sum
+        eval_time: 5m
+        exp_samples:
+          - labels: 'telemetry:samples_scraped:sum{job="engine"}'
+            value: 150
+      - expr: telemetry:series_added:rate5m
+        eval_time: 5m
+        exp_samples:
+          - labels: 'telemetry:series_added:rate5m{job="engine"}'
+            value: 0.3
+      - expr: telemetry:series_added:rate5m
+        eval_time: 6m
+        exp_samples:
+          - labels: 'telemetry:series_added:rate5m{job="engine"}'
+            value: 0
+
+  - name: age uses sample timestamps and the oldest visible target
+    interval: 15s
+    input_series:
+      - series: 'vllm:num_requests_running{model_name="a", instance="a"}'
+        values: '0 _ _ _ _'
+      - series: 'vllm:num_requests_running{model_name="b", instance="b"}'
+        values: '9 9 9 9 _'
+      - series: 'llamacpp:requests_processing{model_name="embed"}'
+        values: '0 _ _ _ _'
+      - series: 'llamacpp:requests_processing{model_name="classify"}'
+        values: '1 1 1 _ _'
+      - series: 'litellm_in_flight_requests{model="a", team="test"}'
+        values: '0 0 _ _ _'
+      - series: 'DCGM_FI_DEV_GPU_UTIL{gpu="0"}'
+        values: '80 80 80 _ _'
+      - series: 'macmon_gpu_power_watts'
+        values: '30 _ _ _ _'
+      - series: 'traces_span_metrics_calls_total{service_name="test"}'
+        values: '100 100 100 100 _'
+    promql_expr_test:
+      - expr: telemetry:source_age_seconds
+        eval_time: 1m
+        exp_samples:
+          - labels: 'telemetry:source_age_seconds{source="vllm"}'
+            value: 60
+          - labels: 'telemetry:source_age_seconds{source="llamacpp"}'
+            value: 60
+          - labels: 'telemetry:source_age_seconds{source="litellm"}'
+            value: 45
+          - labels: 'telemetry:source_age_seconds{source="dcgm"}'
+            value: 30
+          - labels: 'telemetry:source_age_seconds{source="macmon"}'
+            value: 60
+      - expr: telemetry:span_metrics_age_seconds
+        eval_time: 1m
+        exp_samples:
+          - labels: telemetry:span_metrics_age_seconds
+            value: 15
+
+  - name: remote queues match their own sender and failures handle resets
+    interval: 15s
+    input_series:
+      - series: >-
+          prometheus_remote_storage_highest_timestamp_in_seconds{
+          job="prometheus", instance="a"}
+        values: '1000x20'
+      - series: >-
+          prometheus_remote_storage_highest_timestamp_in_seconds{
+          job="prometheus", instance="b"}
+        values: '2000x20'
+      - series: >-
+          prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+          job="prometheus", instance="a", remote_name="one", url="one"}
+        values: '995x20'
+      - series: >-
+          prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+          job="prometheus", instance="a", remote_name="two", url="two"}
+        values: '980x20'
+      - series: >-
+          prometheus_remote_storage_queue_highest_sent_timestamp_seconds{
+          job="prometheus", instance="b", remote_name="one", url="one"}
+        values: '1990x20'
+      - series: >-
+          prometheus_remote_storage_samples_failed_total{
+          job="prometheus", instance="a", remote_name="one"}
+        values: '0+15x10 0+15x9'
+      - series: >-
+          prometheus_remote_storage_samples_failed_total{
+          job="prometheus", instance="a", remote_name="two"}
+        values: '0+30x20'
+    promql_expr_test:
+      - expr: telemetry:remote_write_lag_seconds
+        eval_time: 5m
+        exp_samples:
+          - labels: telemetry:remote_write_lag_seconds
+            value: 20
+      - expr: telemetry:remote_write_failed:rate5m
+        eval_time: 5m
+        exp_samples:
+          - labels: telemetry:remote_write_failed:rate5m
+            value: 2.9473684210526314
+
+  - name: absent inputs do not manufacture healthy readings
+    promql_expr_test:
+      - expr: '{__name__=~"telemetry:.*"}'
+        eval_time: 1m
+        exp_samples: []
+
+  - name: explicitly stale inputs disappear
+    interval: 15s
+    input_series:
+      - series: vllm:num_requests_running
+        values: '0 stale'
+      - series: traces_span_metrics_calls_total
+        values: '0 stale'
+    promql_expr_test:
+      - expr: telemetry:source_age_seconds
+        eval_time: 30s
+        exp_samples: []
+      - expr: telemetry:span_metrics_age_seconds
+        eval_time: 30s
+        exp_samples: []
