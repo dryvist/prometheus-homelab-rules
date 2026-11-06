@@ -1,0 +1,59 @@
+---
+groups:
+  - name: telemetry-health
+    interval: 15s
+    rules:
+      - record: telemetry:target_up:ratio
+        expr: avg by (job) (up)
+
+      - record: telemetry:scrape_duration_seconds:max
+        expr: max by (job) (scrape_duration_seconds)
+
+      - record: telemetry:samples_scraped:sum
+        expr: sum by (job) (scrape_samples_scraped)
+
+      - record: telemetry:series_added:rate5m
+        # Per-scrape gauge: total observed additions / window seconds.
+        expr: sum by (job) (sum_over_time(scrape_series_added[5m])) / 300
+
+      # Worst age across visible targets; missing sources stay absent.
+      - record: telemetry:source_age_seconds
+        expr: max(time() - timestamp(vllm:num_requests_running))
+        labels:
+          source: vllm
+
+      - record: telemetry:source_age_seconds
+        expr: max(time() - timestamp(llamacpp:requests_processing))
+        labels:
+          source: llamacpp
+
+      - record: telemetry:source_age_seconds
+        expr: max(time() - timestamp(litellm_in_flight_requests))
+        labels:
+          source: litellm
+
+      - record: telemetry:source_age_seconds
+        expr: max(time() - timestamp(DCGM_FI_DEV_GPU_UTIL))
+        labels:
+          source: dcgm
+
+      - record: telemetry:source_age_seconds
+        expr: max(time() - timestamp(macmon_gpu_power_watts))
+        labels:
+          source: macmon
+
+      - record: telemetry:remote_write_lag_seconds
+        # Match each queue to its sender, then retain the slowest queue.
+        expr: |
+          max(
+            prometheus_remote_storage_highest_timestamp_in_seconds
+            - on (job, instance) group_right
+            prometheus_remote_storage_queue_highest_sent_timestamp_seconds
+          )
+
+      - record: telemetry:remote_write_failed:rate5m
+        expr: sum(rate(prometheus_remote_storage_samples_failed_total[5m]))
+
+      - record: telemetry:span_metrics_age_seconds
+        # No zero fallback: absence must not imply fresh span metrics.
+        expr: max(time() - timestamp(traces_span_metrics_calls_total))
