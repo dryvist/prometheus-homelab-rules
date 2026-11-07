@@ -6,6 +6,38 @@ evaluation_interval: 1m
 fuzzy_compare: true
 
 tests:
+  - name: router attribution covers all Studio models without duplicating engine tokens
+    interval: 1m
+    input_series:
+      - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '0+53580x60'
+      - series: 'llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator="gpu-secondary"}'
+        values: '0+2460x60'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="mac-primary", model="model-a", team="tier-0"}'
+        values: '0x55 1200+1200x4'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="mac-primary", model="model-b", team="tier-2"}'
+        values: '0x55 1260+1260x4'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="gpu-primary", model="model-a"}'
+        values: '0+53580x60'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="gpu-secondary", model="model-b"}'
+        values: '0+2460x60'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="cpu", model="model-a"}'
+        values: '0+2460x60'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="cloud", model="model-b"}'
+        values: '0+2460x60'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="mac-primary", model="model-a", team="litellm-internal-health-check"}'
+        values: '0+6000x60'
+    promql_expr_test:
+      - expr: accelerator:token_utilization:ratio
+        eval_time: 1h
+        exp_samples:
+          - labels: 'accelerator:token_utilization:ratio{accelerator="gpu-primary"}'
+            value: 1
+          - labels: 'accelerator:token_utilization:ratio{accelerator="gpu-secondary"}'
+            value: 1
+          - labels: 'accelerator:token_utilization:ratio{accelerator="mac-primary"}'
+            value: 1
+
   - name: source labels survive aggregation and engine changes
     interval: 1m
     input_series:
@@ -41,8 +73,6 @@ tests:
             value: 41
           - labels: 'accelerator:generation_tokens_per_second:rate1h{accelerator="mac-primary"}'
             value: 41
-          - labels: 'accelerator:generation_tokens_per_second:rate1h{accelerator="mac-secondary"}'
-            value: 82
       - expr: accelerator:max_generation_tokens_per_second
         eval_time: 1h
         exp_samples:
@@ -62,7 +92,7 @@ tests:
           - labels: 'accelerator:token_utilization:ratio{accelerator="mac-primary"}'
             value: 1
 
-  - name: unlabeled sources retain their default accelerator
+  - name: unlabeled engines retain defaults and unlabeled router tokens are excluded
     interval: 1m
     input_series:
       - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", model="a"}'
@@ -80,8 +110,6 @@ tests:
           - labels: 'accelerator:token_utilization:ratio{accelerator="gpu-primary"}'
             value: 1
           - labels: 'accelerator:token_utilization:ratio{accelerator="gpu-secondary"}'
-            value: 1
-          - labels: 'accelerator:token_utilization:ratio{accelerator="mac-primary"}'
             value: 1
 
   - name: idle sources report zero utilization
