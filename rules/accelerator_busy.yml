@@ -7,6 +7,13 @@ groups:
       - record: accelerator:busy_percent:avg5m
         expr: |
           avg by (accelerator) (
+            avg_over_time(DCGM_FI_DEV_GPU_UTIL{
+              job="dcgm_exporter",
+              accelerator="gpu-primary"
+            }[5m])
+          )
+          or
+          avg by (accelerator) (
             label_replace(
               avg_over_time(DCGM_FI_DEV_GPU_UTIL{
                 job="dcgm_exporter",
