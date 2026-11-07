@@ -1,0 +1,72 @@
+# Run with: promtool test rules tests/accelerator_busy.test.yml
+rule_files:
+  - ../rules/accelerator_busy.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: gpu-primary averages five minutes and multiple GPUs in percent
+    interval: 1m
+    input_series:
+      - series: 'DCGM_FI_DEV_GPU_UTIL{job="dcgm_exporter", accelerator="gpu-primary", gpu="0"}'
+        values: '100 10 20 30 40 50'
+      - series: 'DCGM_FI_DEV_GPU_UTIL{job="dcgm_exporter", accelerator="gpu-primary", gpu="1"}'
+        values: '100 30 40 50 60 70'
+      - series: 'DCGM_FI_DEV_GPU_UTIL{job="other", accelerator="gpu-primary", gpu="0"}'
+        values: '100x5'
+    promql_expr_test:
+      - expr: accelerator:busy_percent:avg5m
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:busy_percent:avg5m{accelerator="gpu-primary"}'
+            value: 40
+
+  - name: explicit gpu-primary takes precedence over the unlabeled fallback
+    interval: 1m
+    input_series:
+      - series: 'DCGM_FI_DEV_GPU_UTIL{job="dcgm_exporter", accelerator="gpu-primary", gpu="0"}'
+        values: '80x5'
+      - series: 'DCGM_FI_DEV_GPU_UTIL{job="dcgm_exporter", gpu="0"}'
+        values: '20x5'
+    promql_expr_test:
+      - expr: accelerator:busy_percent:avg5m
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:busy_percent:avg5m{accelerator="gpu-primary"}'
+            value: 80
+
+  - name: fallback and other lanes retain their output labels and percent values
+    interval: 1m
+    input_series:
+      - series: 'DCGM_FI_DEV_GPU_UTIL{job="dcgm_exporter", gpu="0"}'
+        values: '20x5'
+      - series: 'DCGM_FI_DEV_GPU_UTIL{job="dcgm_exporter", accelerator="gpu-secondary", gpu="0"}'
+        values: '60x5'
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-primary"}'
+        values: '0.5x5'
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-secondary"}'
+        values: '0.25x5'
+    promql_expr_test:
+      - expr: accelerator:busy_percent:avg5m
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:busy_percent:avg5m{accelerator="gpu-primary"}'
+            value: 20
+          - labels: 'accelerator:busy_percent:avg5m{accelerator="gpu-secondary"}'
+            value: 60
+          - labels: 'accelerator:busy_percent:avg5m{accelerator="mac-primary"}'
+            value: 50
+          - labels: 'accelerator:busy_percent:avg5m{accelerator="mac-secondary"}'
+            value: 25
+
+  - name: idle gpu-primary reports zero
+    interval: 1m
+    input_series:
+      - series: 'DCGM_FI_DEV_GPU_UTIL{job="dcgm_exporter", accelerator="gpu-primary", gpu="0"}'
+        values: '0x5'
+    promql_expr_test:
+      - expr: accelerator:busy_percent:avg5m
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:busy_percent:avg5m{accelerator="gpu-primary"}'
+            value: 0
