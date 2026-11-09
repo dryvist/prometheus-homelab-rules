@@ -15,7 +15,7 @@ tests:
           - labels: 'accelerator:serving_slots{accelerator="gpu-primary", provenance="config"}'
             value: 16
           - labels: 'accelerator:serving_slots{accelerator="gpu-secondary", provenance="config"}'
-            value: 4
+            value: 2
           - labels: 'accelerator:serving_slots{accelerator="mac-primary", provenance="config"}'
             value: 1
       - expr: accelerator:context_tokens_per_slot
@@ -24,7 +24,7 @@ tests:
           - labels: 'accelerator:context_tokens_per_slot{accelerator="gpu-primary", provenance="config"}'
             value: 98304
           - labels: 'accelerator:context_tokens_per_slot{accelerator="gpu-secondary", provenance="config"}'
-            value: 8192
+            value: 32768
           - labels: 'accelerator:context_tokens_per_slot{accelerator="mac-primary", provenance="config"}'
             value: 131072
       - expr: accelerator:context_capacity_tokens
@@ -33,7 +33,7 @@ tests:
           - labels: 'accelerator:context_capacity_tokens{accelerator="gpu-primary", provenance="config"}'
             value: 1572864
           - labels: 'accelerator:context_capacity_tokens{accelerator="gpu-secondary", provenance="config"}'
-            value: 32768
+            value: 65536
           - labels: 'accelerator:context_capacity_tokens{accelerator="mac-primary", provenance="config"}'
             value: 131072
 
@@ -55,14 +55,14 @@ tests:
           - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="gpu-primary"}'
             value: 0.5
           - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="gpu-secondary"}'
-            value: 0.5
+            value: 1
           - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="mac-primary", provenance="proxy"}'
             value: 0.25
       - expr: accelerator:slot_utilization:ratio
         eval_time: 5m
         exp_samples:
           - labels: 'accelerator:slot_utilization:ratio'
-            value: 0.4811320754716981
+            value: 0.5
 
   - name: a lane with no series counts as 0 duty in the KPI
     interval: 1m
@@ -85,7 +85,7 @@ tests:
         eval_time: 5m
         exp_samples:
           - labels: 'accelerator:slot_utilization:ratio'
-            value: 0.4528301886792453
+            value: 0.4444444444444444
 
   - name: fully busy and idle lanes set the KPI to 1 and 0
     interval: 1m
@@ -93,7 +93,7 @@ tests:
       - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary"}'
         values: '16x5'
       - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-secondary"}'
-        values: '4x5'
+        values: '2x5'
       - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-primary"}'
         values: '1x5'
     promql_expr_test:

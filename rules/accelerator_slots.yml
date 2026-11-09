@@ -25,7 +25,7 @@ groups:
           provenance: config
 
       - record: accelerator:serving_slots
-        expr: vector(4)
+        expr: vector(2)
         labels:
           accelerator: gpu-secondary
           provenance: config
@@ -43,7 +43,7 @@ groups:
           provenance: config
 
       - record: accelerator:context_tokens_per_slot
-        expr: vector(8192)
+        expr: vector(32768)
         labels:
           accelerator: gpu-secondary
           provenance: config
