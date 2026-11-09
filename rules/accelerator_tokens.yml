@@ -2,8 +2,9 @@
 #
 # accelerator:generation_tokens_per_second:rate1h uses 1h engine rates and a 5m router rate.
 # Source accelerator labels take precedence; unlabeled vLLM and llama.cpp series default
-# to gpu-primary and gpu-secondary respectively. Only mac-primary uses router output tokens,
-# across all models, excluding router health checks.
+# to gpu-primary and gpu-secondary respectively, and the router's MLX model defaults
+# to mac-primary. mac-secondary is reported in the rate metric and excluded from the
+# utilization KPI. Router health-check tokens are excluded.
 #
 # accelerator:max_generation_tokens_per_second is the maximum generation rate the model serves at its
 #   maximum concurrency with large contexts. provenance="measured" marks a benchmark result;
@@ -28,7 +29,10 @@ groups:
               "accelerator", "gpu-secondary", "accelerator", "^$"
             )
             or
-            rate(litellm_output_tokens_metric_total{job="llm_router", accelerator="mac-primary", team!="litellm-internal-health-check"}[5m])
+            label_replace(
+              rate(litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team!="litellm-internal-health-check"}[5m]),
+              "accelerator", "mac-primary", "accelerator", "^$"
+            )
           )
 
       # 2026-11-06, both provisional lanes:
