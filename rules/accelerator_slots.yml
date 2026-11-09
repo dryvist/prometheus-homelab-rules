@@ -1,0 +1,172 @@
+# Slot-based serving utilization KPI.
+#
+# Primary KPI: accelerator:slot_utilization:ratio, the average duty cycle of all
+# serving slots, each lane weighted by its share of total context capacity
+# (slots times context tokens per slot). Secondary series: the token utilization
+# ratio in accelerator_tokens.yml and accelerator:vram_utilization:ratio here.
+#
+# accelerator:serving_slots and accelerator:context_tokens_per_slot are serving
+# configuration constants, provenance="config". A lane with no engine series
+# counts as 0 duty in the KPI.
+#
+# gpu-primary and gpu-secondary duty cycles divide engine in-flight requests by
+# slots; consumers take avg_over_time over 4h. mac-primary has no engine
+# in-flight metric yet, so macmon_gpu_active_ratio stands in for its single
+# serial slot, provenance="proxy".
+groups:
+  - name: accelerator-slots
+    interval: 1m
+    rules:
+      # Serving configuration constants.
+      - record: accelerator:serving_slots
+        expr: vector(16)
+        labels:
+          accelerator: gpu-primary
+          provenance: config
+
+      - record: accelerator:serving_slots
+        expr: vector(4)
+        labels:
+          accelerator: gpu-secondary
+          provenance: config
+
+      - record: accelerator:serving_slots
+        expr: vector(1)
+        labels:
+          accelerator: mac-primary
+          provenance: config
+
+      - record: accelerator:context_tokens_per_slot
+        expr: vector(98304)
+        labels:
+          accelerator: gpu-primary
+          provenance: config
+
+      - record: accelerator:context_tokens_per_slot
+        expr: vector(8192)
+        labels:
+          accelerator: gpu-secondary
+          provenance: config
+
+      - record: accelerator:context_tokens_per_slot
+        expr: vector(131072)
+        labels:
+          accelerator: mac-primary
+          provenance: config
+
+      # Slots times context tokens per slot.
+      - record: accelerator:context_capacity_tokens
+        expr: accelerator:serving_slots * on (accelerator) accelerator:context_tokens_per_slot
+
+      # Slot duty cycle: in-flight requests over serving slots.
+      - record: accelerator:slot_duty_cycle:ratio
+        expr: |
+          sum by (accelerator) (
+            vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary"}
+          )
+          / on (accelerator)
+          accelerator:serving_slots
+
+      - record: accelerator:slot_duty_cycle:ratio
+        expr: |
+          sum by (accelerator) (
+            llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-secondary"}
+          )
+          / on (accelerator)
+          accelerator:serving_slots
+
+      - record: accelerator:slot_duty_cycle:ratio
+        # No engine in-flight metric yet; the GPU active ratio stands in.
+        expr: |
+          avg by (accelerator) (
+            macmon_gpu_active_ratio{job="macmon", accelerator="mac-primary"}
+          )
+        labels:
+          provenance: proxy
+
+      # The KPI: duty cycles weighted by each lane's share of total context
+      # capacity. A lane with no duty cycle series counts as 0 duty.
+      - record: accelerator:slot_utilization:ratio
+        expr: |
+          sum (
+            accelerator:slot_duty_cycle:ratio
+              * on (accelerator)
+            accelerator:context_capacity_tokens{accelerator=~"gpu-primary|gpu-secondary|mac-primary"}
+          )
+          /
+          sum (
+            accelerator:context_capacity_tokens{accelerator=~"gpu-primary|gpu-secondary|mac-primary"}
+          )
+
+      # VRAM utilization: framebuffer used over used plus free. A GPU appearing
+      # under multiple guest views with one UUID is deduplicated with max, then
+      # averaged per accelerator. Macs report used over total memory.
+      - record: accelerator:vram_utilization:ratio
+        expr: |
+          avg by (accelerator) (
+            max by (accelerator, UUID) (
+              DCGM_FI_DEV_FB_USED{job="dcgm_exporter"}
+              /
+              (DCGM_FI_DEV_FB_USED{job="dcgm_exporter"} + DCGM_FI_DEV_FB_FREE{job="dcgm_exporter"})
+            )
+          )
+          or
+          avg by (accelerator) (
+            macmon_memory_ram_used_bytes{job="macmon"}
+            /
+            macmon_memory_ram_total_bytes{job="macmon"}
+          )
+
+      # Total tokens per second (prompt plus generated) per lane.
+      - record: accelerator:total_tokens_per_second:rate1h
+        expr: |
+          (sum by (accelerator) (rate(vllm:prompt_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}[1h]))
+            + sum by (accelerator) (rate(vllm:generation_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}[1h])))
+          or
+          (sum by (accelerator) (rate(llamacpp:prompt_tokens_total{job="llm_gpu_engine", accelerator="gpu-secondary"}[1h]))
+            + sum by (accelerator) (rate(llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator="gpu-secondary"}[1h])))
+          or
+          (sum by (accelerator) (label_replace(rate(litellm_input_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team!="litellm-internal-health-check"}[1h]), "accelerator", "mac-primary", "accelerator", "^$"))
+            + sum by (accelerator) (label_replace(rate(litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team!="litellm-internal-health-check"}[1h]), "accelerator", "mac-primary", "accelerator", "^$")))
+
+      - record: accelerator:total_tokens_per_second:rate4h
+        expr: |
+          (sum by (accelerator) (rate(vllm:prompt_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}[4h]))
+            + sum by (accelerator) (rate(vllm:generation_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}[4h])))
+          or
+          (sum by (accelerator) (rate(llamacpp:prompt_tokens_total{job="llm_gpu_engine", accelerator="gpu-secondary"}[4h]))
+            + sum by (accelerator) (rate(llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator="gpu-secondary"}[4h])))
+          or
+          (sum by (accelerator) (label_replace(rate(litellm_input_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team!="litellm-internal-health-check"}[4h]), "accelerator", "mac-primary", "accelerator", "^$"))
+            + sum by (accelerator) (label_replace(rate(litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team!="litellm-internal-health-check"}[4h]), "accelerator", "mac-primary", "accelerator", "^$")))
+
+      - record: accelerator:total_tokens_per_second:rate12h
+        expr: |
+          (sum by (accelerator) (rate(vllm:prompt_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}[12h]))
+            + sum by (accelerator) (rate(vllm:generation_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}[12h])))
+          or
+          (sum by (accelerator) (rate(llamacpp:prompt_tokens_total{job="llm_gpu_engine", accelerator="gpu-secondary"}[12h]))
+            + sum by (accelerator) (rate(llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator="gpu-secondary"}[12h])))
+          or
+          (sum by (accelerator) (label_replace(rate(litellm_input_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team!="litellm-internal-health-check"}[12h]), "accelerator", "mac-primary", "accelerator", "^$"))
+            + sum by (accelerator) (label_replace(rate(litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team!="litellm-internal-health-check"}[12h]), "accelerator", "mac-primary", "accelerator", "^$")))
+
+      - record: accelerator:total_tokens_per_second:rate24h
+        expr: |
+          (sum by (accelerator) (rate(vllm:prompt_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}[24h]))
+            + sum by (accelerator) (rate(vllm:generation_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}[24h])))
+          or
+          (sum by (accelerator) (rate(llamacpp:prompt_tokens_total{job="llm_gpu_engine", accelerator="gpu-secondary"}[24h]))
+            + sum by (accelerator) (rate(llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator="gpu-secondary"}[24h])))
+          or
+          (sum by (accelerator) (label_replace(rate(litellm_input_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team!="litellm-internal-health-check"}[24h]), "accelerator", "mac-primary", "accelerator", "^$"))
+            + sum by (accelerator) (label_replace(rate(litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team!="litellm-internal-health-check"}[24h]), "accelerator", "mac-primary", "accelerator", "^$")))
+
+      - alert: AcceleratorSlotUnderutilized
+        expr: avg_over_time(accelerator:slot_duty_cycle:ratio[4h]) < 0.5
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.accelerator }} slot duty cycle is below 0.5"
+          description: "The 4-hour average slot duty cycle (accelerator:slot_duty_cycle:ratio, in-flight requests over serving slots) for {{ $labels.accelerator }} is below 0.5."

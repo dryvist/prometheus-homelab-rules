@@ -1,0 +1,295 @@
+# Run with: promtool test rules tests/accelerator_slots.test.yml
+rule_files:
+  - ../rules/accelerator_slots.yml
+
+evaluation_interval: 1m
+fuzzy_compare: true
+
+tests:
+  - name: serving configuration constants and context capacity
+    interval: 1m
+    promql_expr_test:
+      - expr: accelerator:serving_slots
+        eval_time: 1m
+        exp_samples:
+          - labels: 'accelerator:serving_slots{accelerator="gpu-primary", provenance="config"}'
+            value: 16
+          - labels: 'accelerator:serving_slots{accelerator="gpu-secondary", provenance="config"}'
+            value: 4
+          - labels: 'accelerator:serving_slots{accelerator="mac-primary", provenance="config"}'
+            value: 1
+      - expr: accelerator:context_tokens_per_slot
+        eval_time: 1m
+        exp_samples:
+          - labels: 'accelerator:context_tokens_per_slot{accelerator="gpu-primary", provenance="config"}'
+            value: 98304
+          - labels: 'accelerator:context_tokens_per_slot{accelerator="gpu-secondary", provenance="config"}'
+            value: 8192
+          - labels: 'accelerator:context_tokens_per_slot{accelerator="mac-primary", provenance="config"}'
+            value: 131072
+      - expr: accelerator:context_capacity_tokens
+        eval_time: 1m
+        exp_samples:
+          - labels: 'accelerator:context_capacity_tokens{accelerator="gpu-primary", provenance="config"}'
+            value: 1572864
+          - labels: 'accelerator:context_capacity_tokens{accelerator="gpu-secondary", provenance="config"}'
+            value: 32768
+          - labels: 'accelerator:context_capacity_tokens{accelerator="mac-primary", provenance="config"}'
+            value: 131072
+
+  - name: per-lane slot duty cycles and the context-weighted KPI
+    interval: 1m
+    input_series:
+      - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary", model="a"}'
+        values: '6x5'
+      - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary", model="b"}'
+        values: '2x5'
+      - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-secondary", model="c"}'
+        values: '2x5'
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-primary"}'
+        values: '0.25x5'
+    promql_expr_test:
+      - expr: accelerator:slot_duty_cycle:ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="gpu-primary"}'
+            value: 0.5
+          - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="gpu-secondary"}'
+            value: 0.5
+          - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="mac-primary", provenance="proxy"}'
+            value: 0.25
+      - expr: accelerator:slot_utilization:ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:slot_utilization:ratio'
+            value: 0.4811320754716981
+
+  - name: a lane with no series counts as 0 duty in the KPI
+    interval: 1m
+    input_series:
+      - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '8x5'
+    promql_expr_test:
+      - expr: accelerator:slot_duty_cycle:ratio{accelerator="gpu-primary"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="gpu-primary"}'
+            value: 0.5
+      - expr: accelerator:slot_duty_cycle:ratio{accelerator="gpu-secondary"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: accelerator:slot_duty_cycle:ratio{accelerator="mac-primary"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: accelerator:slot_utilization:ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:slot_utilization:ratio'
+            value: 0.4528301886792453
+
+  - name: fully busy and idle lanes set the KPI to 1 and 0
+    interval: 1m
+    input_series:
+      - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '16x5'
+      - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-secondary"}'
+        values: '4x5'
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-primary"}'
+        values: '1x5'
+    promql_expr_test:
+      - expr: accelerator:slot_utilization:ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:slot_utilization:ratio'
+            value: 1
+
+  - name: idle lanes set the KPI to 0
+    interval: 1m
+    input_series:
+      - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '0x5'
+      - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-secondary"}'
+        values: '0x5'
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-primary"}'
+        values: '0x5'
+    promql_expr_test:
+      - expr: accelerator:slot_utilization:ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:slot_utilization:ratio'
+            value: 0
+
+  - name: series outside a lane do not create a duty cycle
+    interval: 1m
+    input_series:
+      - series: 'vllm:num_requests_running{job="other", accelerator="gpu-primary"}'
+        values: '100x5'
+      - series: 'vllm:num_requests_running{job="llm_gpu_engine"}'
+        values: '100x5'
+      - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '100x5'
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-secondary"}'
+        values: '1x5'
+    promql_expr_test:
+      - expr: accelerator:slot_duty_cycle:ratio
+        eval_time: 5m
+        exp_samples: []
+      - expr: accelerator:slot_utilization:ratio
+        eval_time: 5m
+        exp_samples: []
+
+  - name: VRAM ratios deduplicate duplicate-UUID views and average per accelerator
+    interval: 1m
+    input_series:
+      - series: 'DCGM_FI_DEV_FB_USED{job="dcgm_exporter", accelerator="gpu-primary", UUID="gpu-uuid-1", gpu="0"}'
+        values: '70000x5'
+      - series: 'DCGM_FI_DEV_FB_FREE{job="dcgm_exporter", accelerator="gpu-primary", UUID="gpu-uuid-1", gpu="0"}'
+        values: '30000x5'
+      - series: 'DCGM_FI_DEV_FB_USED{job="dcgm_exporter", accelerator="gpu-primary", UUID="gpu-uuid-2", gpu="1"}'
+        values: '50000x5'
+      - series: 'DCGM_FI_DEV_FB_FREE{job="dcgm_exporter", accelerator="gpu-primary", UUID="gpu-uuid-2", gpu="1"}'
+        values: '50000x5'
+      - series: 'DCGM_FI_DEV_FB_USED{job="dcgm_exporter", accelerator="gpu-secondary", UUID="gpu-uuid-3", gpu="0", guest="1"}'
+        values: '30000x5'
+      - series: 'DCGM_FI_DEV_FB_FREE{job="dcgm_exporter", accelerator="gpu-secondary", UUID="gpu-uuid-3", gpu="0", guest="1"}'
+        values: '10000x5'
+      - series: 'DCGM_FI_DEV_FB_USED{job="dcgm_exporter", accelerator="gpu-secondary", UUID="gpu-uuid-3", gpu="0", guest="2"}'
+        values: '10000x5'
+      - series: 'DCGM_FI_DEV_FB_FREE{job="dcgm_exporter", accelerator="gpu-secondary", UUID="gpu-uuid-3", gpu="0", guest="2"}'
+        values: '10000x5'
+      - series: 'macmon_memory_ram_used_bytes{job="macmon", accelerator="mac-primary"}'
+        values: '8000x5'
+      - series: 'macmon_memory_ram_total_bytes{job="macmon", accelerator="mac-primary"}'
+        values: '16000x5'
+    promql_expr_test:
+      - expr: accelerator:vram_utilization:ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:vram_utilization:ratio{accelerator="gpu-primary"}'
+            value: 0.6
+          # max(0.75, 0.5) over the two views of one UUID, not their average.
+          - labels: 'accelerator:vram_utilization:ratio{accelerator="gpu-secondary"}'
+            value: 0.75
+          - labels: 'accelerator:vram_utilization:ratio{accelerator="mac-primary"}'
+            value: 0.5
+
+  - name: total tokens per second sum prompt and generated per lane at every lookback
+    interval: 1m
+    input_series:
+      - series: 'vllm:prompt_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '0+60000x1440'
+      - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '0+60000x1440'
+      - series: 'llamacpp:prompt_tokens_total{job="llm_gpu_engine", accelerator="gpu-secondary", model="c"}'
+        values: '0+12000x1440'
+      - series: 'llamacpp:prompt_tokens_total{job="llm_gpu_engine", accelerator="gpu-secondary", model="d"}'
+        values: '0+6000x1440'
+      - series: 'llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator="gpu-secondary", model="c"}'
+        values: '0+18000x1440'
+      - series: 'llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator="gpu-secondary", model="d"}'
+        values: '0+6000x1440'
+      - series: 'litellm_input_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team="tier-0"}'
+        values: '0+30000x1440'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team="tier-1"}'
+        values: '0+30000x1440'
+      - series: 'litellm_input_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team="litellm-internal-health-check"}'
+        values: '0+90000x1440'
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", model="other", team="tier-0"}'
+        values: '0+90000x1440'
+      - series: 'vllm:prompt_tokens_total{job="other", accelerator="gpu-primary"}'
+        values: '0+90000x1440'
+    promql_expr_test:
+      - expr: accelerator:total_tokens_per_second:rate1h
+        eval_time: 1h
+        exp_samples:
+          - labels: 'accelerator:total_tokens_per_second:rate1h{accelerator="gpu-primary"}'
+            value: 2000
+          - labels: 'accelerator:total_tokens_per_second:rate1h{accelerator="gpu-secondary"}'
+            value: 700
+          - labels: 'accelerator:total_tokens_per_second:rate1h{accelerator="mac-primary"}'
+            value: 1000
+      - expr: accelerator:total_tokens_per_second:rate4h
+        eval_time: 4h
+        exp_samples:
+          - labels: 'accelerator:total_tokens_per_second:rate4h{accelerator="gpu-primary"}'
+            value: 2000
+          - labels: 'accelerator:total_tokens_per_second:rate4h{accelerator="gpu-secondary"}'
+            value: 700
+          - labels: 'accelerator:total_tokens_per_second:rate4h{accelerator="mac-primary"}'
+            value: 1000
+      - expr: accelerator:total_tokens_per_second:rate12h
+        eval_time: 12h
+        exp_samples:
+          - labels: 'accelerator:total_tokens_per_second:rate12h{accelerator="gpu-primary"}'
+            value: 2000
+          - labels: 'accelerator:total_tokens_per_second:rate12h{accelerator="gpu-secondary"}'
+            value: 700
+          - labels: 'accelerator:total_tokens_per_second:rate12h{accelerator="mac-primary"}'
+            value: 1000
+      - expr: accelerator:total_tokens_per_second:rate24h
+        eval_time: 24h
+        exp_samples:
+          - labels: 'accelerator:total_tokens_per_second:rate24h{accelerator="gpu-primary"}'
+            value: 2000
+          - labels: 'accelerator:total_tokens_per_second:rate24h{accelerator="gpu-secondary"}'
+            value: 700
+          - labels: 'accelerator:total_tokens_per_second:rate24h{accelerator="mac-primary"}'
+            value: 1000
+
+  - name: the underuse alert fires on the 4h average slot duty cycle
+    interval: 1m
+    input_series:
+      - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '6x120'
+      - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-secondary"}'
+        values: '4x120'
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-primary"}'
+        values: '0.4x120'
+    alert_rule_test:
+      - eval_time: 1h
+        alertname: AcceleratorSlotUnderutilized
+        exp_alerts:
+          - exp_labels:
+              accelerator: gpu-primary
+              severity: critical
+            exp_annotations:
+              summary: "gpu-primary slot duty cycle is below 0.5"
+              description: "The 4-hour average slot duty cycle (accelerator:slot_duty_cycle:ratio, in-flight requests over serving slots) for gpu-primary is below 0.5."
+          - exp_labels:
+              accelerator: mac-primary
+              provenance: proxy
+              severity: critical
+            exp_annotations:
+              summary: "mac-primary slot duty cycle is below 0.5"
+              description: "The 4-hour average slot duty cycle (accelerator:slot_duty_cycle:ratio, in-flight requests over serving slots) for mac-primary is below 0.5."
+
+  - name: lanes at or above half duty do not fire the underuse alert
+    interval: 1m
+    input_series:
+      - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '8x120'
+      - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-secondary"}'
+        values: '3x120'
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-primary"}'
+        values: '0.6x120'
+    alert_rule_test:
+      - eval_time: 1h
+        alertname: AcceleratorSlotUnderutilized
+        exp_alerts: []
+
+  - name: a lane with no series does not fire the underuse alert
+    interval: 1m
+    input_series:
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-primary"}'
+        values: '0.4x120'
+    alert_rule_test:
+      - eval_time: 1h
+        alertname: AcceleratorSlotUnderutilized
+        exp_alerts:
+          - exp_labels:
+              accelerator: mac-primary
+              provenance: proxy
+              severity: critical
+            exp_annotations:
+              summary: "mac-primary slot duty cycle is below 0.5"
+              description: "The 4-hour average slot duty cycle (accelerator:slot_duty_cycle:ratio, in-flight requests over serving slots) for mac-primary is below 0.5."
