@@ -11,7 +11,8 @@
 #   provenance="provisional" marks an estimate (single slot, short context, or an observed peak) until a
 #   measured maximum-concurrency, large-context run replaces it.
 #
-# accelerator:token_utilization:ratio = rate1h / max. The alert fires on its 6h average.
+# accelerator:token_utilization:ratio = rate1h / max. It stays as a secondary
+# series; the underuse alert fires on the slot duty cycle in accelerator_slots.yml.
 groups:
   - name: accelerator-tokens
     interval: 1m
@@ -63,12 +64,3 @@ groups:
           accelerator:generation_tokens_per_second:rate1h{accelerator=~"gpu-primary|gpu-secondary|mac-primary"}
           / on (accelerator)
           accelerator:max_generation_tokens_per_second
-
-      - alert: AcceleratorTokenUnderutilized
-        expr: avg_over_time(accelerator:token_utilization:ratio[6h]) < 0.5
-        for: 30m
-        labels:
-          severity: critical
-        annotations:
-          summary: "{{ $labels.accelerator }} token utilization KPI is below 0.5"
-          description: "The 6-hour average of the token utilization KPI (accelerator:token_utilization:ratio, generation tokens per second over the maximum generation tokens per second) for {{ $labels.accelerator }} is below 0.5."
