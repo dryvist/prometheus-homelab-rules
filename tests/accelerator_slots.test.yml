@@ -6,40 +6,71 @@ evaluation_interval: 1m
 fuzzy_compare: true
 
 tests:
-  - name: serving configuration constants and context capacity
+  - name: declared serving profiles set slots, context tokens and capacity
     interval: 1m
+    input_series:
+      - series: 'llm_serving_declared_slots{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '16x5'
+      - series: 'llm_serving_declared_context_tokens_per_slot{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '98304x5'
+      - series: 'llm_serving_declared_slots{accelerator="gpu-primary", profile="qwen3-8b", engine="llamacpp"}'
+        values: '4x5'
+      - series: 'llm_serving_declared_context_tokens_per_slot{accelerator="gpu-primary", profile="qwen3-8b", engine="llamacpp"}'
+        values: '16384x5'
+      - series: 'llm_serving_declared_slots{accelerator="gpu-secondary", profile="qwen3-coder", engine="llamacpp"}'
+        values: '2x5'
+      - series: 'llm_serving_declared_context_tokens_per_slot{accelerator="gpu-secondary", profile="qwen3-coder", engine="llamacpp"}'
+        values: '16384x5'
     promql_expr_test:
       - expr: accelerator:serving_slots
         eval_time: 1m
         exp_samples:
-          - labels: 'accelerator:serving_slots{accelerator="gpu-primary", provenance="config"}'
+          # max over the lane's declared profiles, not the sum.
+          - labels: 'accelerator:serving_slots{accelerator="gpu-primary", provenance="profile"}'
             value: 16
-          - labels: 'accelerator:serving_slots{accelerator="gpu-secondary", provenance="config"}'
+          - labels: 'accelerator:serving_slots{accelerator="gpu-secondary", provenance="profile"}'
             value: 2
           - labels: 'accelerator:serving_slots{accelerator="mac-primary", provenance="config"}'
             value: 1
       - expr: accelerator:context_tokens_per_slot
         eval_time: 1m
         exp_samples:
-          - labels: 'accelerator:context_tokens_per_slot{accelerator="gpu-primary", provenance="config"}'
+          - labels: 'accelerator:context_tokens_per_slot{accelerator="gpu-primary", provenance="profile"}'
             value: 98304
-          - labels: 'accelerator:context_tokens_per_slot{accelerator="gpu-secondary", provenance="config"}'
-            value: 32768
+          - labels: 'accelerator:context_tokens_per_slot{accelerator="gpu-secondary", provenance="profile"}'
+            value: 16384
           - labels: 'accelerator:context_tokens_per_slot{accelerator="mac-primary", provenance="config"}'
             value: 131072
+      # The multiplication matches on accelerator, so the output carries no
+      # provenance label.
       - expr: accelerator:context_capacity_tokens
         eval_time: 1m
         exp_samples:
-          - labels: 'accelerator:context_capacity_tokens{accelerator="gpu-primary", provenance="config"}'
+          - labels: 'accelerator:context_capacity_tokens{accelerator="gpu-primary"}'
             value: 1572864
-          - labels: 'accelerator:context_capacity_tokens{accelerator="gpu-secondary", provenance="config"}'
-            value: 65536
-          - labels: 'accelerator:context_capacity_tokens{accelerator="mac-primary", provenance="config"}'
+          - labels: 'accelerator:context_capacity_tokens{accelerator="gpu-secondary"}'
+            value: 32768
+          - labels: 'accelerator:context_capacity_tokens{accelerator="mac-primary"}'
             value: 131072
+      - expr: accelerator:declared_profile_present:bool
+        eval_time: 1m
+        exp_samples:
+          - labels: 'accelerator:declared_profile_present:bool{accelerator="gpu-primary"}'
+            value: 1
+          - labels: 'accelerator:declared_profile_present:bool{accelerator="gpu-secondary"}'
+            value: 1
 
   - name: per-lane slot duty cycles and the context-weighted KPI
     interval: 1m
     input_series:
+      - series: 'llm_serving_declared_slots{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '16x5'
+      - series: 'llm_serving_declared_context_tokens_per_slot{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '98304x5'
+      - series: 'llm_serving_declared_slots{accelerator="gpu-secondary", profile="qwen3-coder", engine="llamacpp"}'
+        values: '2x5'
+      - series: 'llm_serving_declared_context_tokens_per_slot{accelerator="gpu-secondary", profile="qwen3-coder", engine="llamacpp"}'
+        values: '16384x5'
       - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary", model="a"}'
         values: '6x5'
       - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary", model="b"}'
@@ -62,34 +93,55 @@ tests:
         eval_time: 5m
         exp_samples:
           - labels: 'accelerator:slot_utilization:ratio'
-            value: 0.5
+            value: 0.4905660377358491
 
-  - name: a lane with no series counts as 0 duty in the KPI
+  - name: a lane with no declared series has no slots and counts 0 in the presence flag
     interval: 1m
     input_series:
+      - series: 'llm_serving_declared_slots{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '16x5'
+      - series: 'llm_serving_declared_context_tokens_per_slot{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '98304x5'
       - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary"}'
         values: '8x5'
     promql_expr_test:
+      - expr: accelerator:declared_profile_present:bool
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:declared_profile_present:bool{accelerator="gpu-primary"}'
+            value: 1
+          - labels: 'accelerator:declared_profile_present:bool{accelerator="gpu-secondary"}'
+            value: 0
+      - expr: accelerator:serving_slots{accelerator="gpu-primary"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:serving_slots{accelerator="gpu-primary", provenance="profile"}'
+            value: 16
+      - expr: accelerator:serving_slots{accelerator="gpu-secondary"}
+        eval_time: 5m
+        exp_samples: []
       - expr: accelerator:slot_duty_cycle:ratio{accelerator="gpu-primary"}
         eval_time: 5m
         exp_samples:
           - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="gpu-primary"}'
             value: 0.5
-      - expr: accelerator:slot_duty_cycle:ratio{accelerator="gpu-secondary"}
-        eval_time: 5m
-        exp_samples: []
-      - expr: accelerator:slot_duty_cycle:ratio{accelerator="mac-primary"}
-        eval_time: 5m
-        exp_samples: []
       - expr: accelerator:slot_utilization:ratio
         eval_time: 5m
         exp_samples:
           - labels: 'accelerator:slot_utilization:ratio'
-            value: 0.4444444444444444
+            value: 0.4615384615384615
 
   - name: fully busy and idle lanes set the KPI to 1 and 0
     interval: 1m
     input_series:
+      - series: 'llm_serving_declared_slots{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '16x5'
+      - series: 'llm_serving_declared_context_tokens_per_slot{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '98304x5'
+      - series: 'llm_serving_declared_slots{accelerator="gpu-secondary", profile="qwen3-coder", engine="llamacpp"}'
+        values: '2x5'
+      - series: 'llm_serving_declared_context_tokens_per_slot{accelerator="gpu-secondary", profile="qwen3-coder", engine="llamacpp"}'
+        values: '16384x5'
       - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary"}'
         values: '16x5'
       - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-secondary"}'
@@ -106,6 +158,14 @@ tests:
   - name: idle lanes set the KPI to 0
     interval: 1m
     input_series:
+      - series: 'llm_serving_declared_slots{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '16x5'
+      - series: 'llm_serving_declared_context_tokens_per_slot{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '98304x5'
+      - series: 'llm_serving_declared_slots{accelerator="gpu-secondary", profile="qwen3-coder", engine="llamacpp"}'
+        values: '2x5'
+      - series: 'llm_serving_declared_context_tokens_per_slot{accelerator="gpu-secondary", profile="qwen3-coder", engine="llamacpp"}'
+        values: '16384x5'
       - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary"}'
         values: '0x5'
       - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-secondary"}'
@@ -137,6 +197,31 @@ tests:
       - expr: accelerator:slot_utilization:ratio
         eval_time: 5m
         exp_samples: []
+
+  - name: in-flight above the declared slots sets slot_over_capacity
+    interval: 1m
+    input_series:
+      - series: 'llm_serving_declared_slots{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '16x5'
+      - series: 'llm_serving_declared_slots{accelerator="gpu-secondary", profile="qwen3-coder", engine="llamacpp"}'
+        values: '2x5'
+      - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '8x5'
+      - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-secondary"}'
+        values: '3x5'
+    promql_expr_test:
+      - expr: accelerator:slot_duty_cycle:ratio{accelerator="gpu-secondary"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="gpu-secondary"}'
+            value: 1.5
+      - expr: accelerator:slot_over_capacity:bool
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:slot_over_capacity:bool{accelerator="gpu-primary"}'
+            value: 0
+          - labels: 'accelerator:slot_over_capacity:bool{accelerator="gpu-secondary"}'
+            value: 1
 
   - name: VRAM ratios deduplicate duplicate-UUID views and average per accelerator
     interval: 1m
@@ -239,6 +324,10 @@ tests:
   - name: the underuse alert fires on the 4h average slot duty cycle
     interval: 1m
     input_series:
+      - series: 'llm_serving_declared_slots{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '16x120'
+      - series: 'llm_serving_declared_slots{accelerator="gpu-secondary", profile="qwen3-coder", engine="llamacpp"}'
+        values: '2x120'
       - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary"}'
         values: '6x120'
       - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-secondary"}'
@@ -266,6 +355,10 @@ tests:
   - name: lanes at or above half duty do not fire the underuse alert
     interval: 1m
     input_series:
+      - series: 'llm_serving_declared_slots{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '16x120'
+      - series: 'llm_serving_declared_slots{accelerator="gpu-secondary", profile="qwen3-coder", engine="llamacpp"}'
+        values: '2x120'
       - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary"}'
         values: '8x120'
       - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-secondary"}'
