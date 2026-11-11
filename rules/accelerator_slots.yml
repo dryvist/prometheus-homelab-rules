@@ -5,9 +5,15 @@
 # (slots times context tokens per slot). Secondary series: the token utilization
 # ratio in accelerator_tokens.yml and accelerator:vram_utilization:ratio here.
 #
-# accelerator:serving_slots and accelerator:context_tokens_per_slot are serving
-# configuration constants, provenance="config". A lane with no engine series
-# counts as 0 duty in the KPI.
+# accelerator:serving_slots and accelerator:context_tokens_per_slot for the GPU
+# lanes come from the serving profile each engine guest declares
+# (llm_serving_declared_slots, llm_serving_declared_context_tokens_per_slot),
+# provenance="profile". mac-primary publishes no declared profile, so its slot
+# stays a configuration constant, provenance="config". A GPU lane with no
+# declared series has no serving slots and counts as 0 duty in the KPI;
+# accelerator:declared_profile_present:bool flags that drift.
+# accelerator:slot_over_capacity:bool flags in-flight requests above the
+# declared slots.
 #
 # gpu-primary and gpu-secondary duty cycles divide engine in-flight requests by
 # slots; consumers take avg_over_time over 4h. mac-primary has no engine
@@ -17,18 +23,19 @@ groups:
   - name: accelerator-slots
     interval: 1m
     rules:
-      # Serving configuration constants.
+      # Serving configuration. GPU lanes read the declared serving profile;
+      # mac-primary stays a constant.
       - record: accelerator:serving_slots
-        expr: vector(16)
+        expr: max by (accelerator) (llm_serving_declared_slots{accelerator="gpu-primary"})
         labels:
           accelerator: gpu-primary
-          provenance: config
+          provenance: profile
 
       - record: accelerator:serving_slots
-        expr: vector(2)
+        expr: max by (accelerator) (llm_serving_declared_slots{accelerator="gpu-secondary"})
         labels:
           accelerator: gpu-secondary
-          provenance: config
+          provenance: profile
 
       - record: accelerator:serving_slots
         expr: vector(1)
@@ -37,22 +44,44 @@ groups:
           provenance: config
 
       - record: accelerator:context_tokens_per_slot
-        expr: vector(98304)
+        expr: max by (accelerator) (llm_serving_declared_context_tokens_per_slot{accelerator="gpu-primary"})
         labels:
           accelerator: gpu-primary
-          provenance: config
+          provenance: profile
 
       - record: accelerator:context_tokens_per_slot
-        expr: vector(32768)
+        expr: max by (accelerator) (llm_serving_declared_context_tokens_per_slot{accelerator="gpu-secondary"})
         labels:
           accelerator: gpu-secondary
-          provenance: config
+          provenance: profile
 
       - record: accelerator:context_tokens_per_slot
         expr: vector(131072)
         labels:
           accelerator: mac-primary
           provenance: config
+
+      # Declared profile drift: 1 while the lane publishes its declared slots,
+      # 0 when the series is missing.
+      - record: accelerator:declared_profile_present:bool
+        expr: |
+          1 - (
+            absent(llm_serving_declared_slots{accelerator="gpu-primary"})
+              or
+            label_replace(vector(0), "accelerator", "gpu-primary", "", "")
+          )
+        labels:
+          accelerator: gpu-primary
+
+      - record: accelerator:declared_profile_present:bool
+        expr: |
+          1 - (
+            absent(llm_serving_declared_slots{accelerator="gpu-secondary"})
+              or
+            label_replace(vector(0), "accelerator", "gpu-secondary", "", "")
+          )
+        labels:
+          accelerator: gpu-secondary
 
       # Slots times context tokens per slot.
       - record: accelerator:context_capacity_tokens
@@ -66,6 +95,8 @@ groups:
           )
           / on (accelerator)
           accelerator:serving_slots
+        labels:
+          accelerator: gpu-primary
 
       - record: accelerator:slot_duty_cycle:ratio
         expr: |
@@ -74,6 +105,8 @@ groups:
           )
           / on (accelerator)
           accelerator:serving_slots
+        labels:
+          accelerator: gpu-secondary
 
       - record: accelerator:slot_duty_cycle:ratio
         # No engine in-flight metric yet; the GPU active ratio stands in.
@@ -83,6 +116,17 @@ groups:
           )
         labels:
           provenance: proxy
+
+      # In-flight requests above the lane's serving slots.
+      - record: accelerator:slot_over_capacity:bool
+        expr: accelerator:slot_duty_cycle:ratio{accelerator="gpu-primary"} > bool 1
+        labels:
+          accelerator: gpu-primary
+
+      - record: accelerator:slot_over_capacity:bool
+        expr: accelerator:slot_duty_cycle:ratio{accelerator="gpu-secondary"} > bool 1
+        labels:
+          accelerator: gpu-secondary
 
       # The KPI: duty cycles weighted by each lane's share of total context
       # capacity. A lane with no duty cycle series counts as 0 duty.
