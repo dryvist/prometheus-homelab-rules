@@ -94,6 +94,23 @@ tests:
           - labels: 'accelerator:token_utilization:ratio{accelerator="mac-primary"}'
             value: 1
 
+  - name: router literal None accelerator label maps to mac-primary
+    interval: 1m
+    input_series:
+      - series: 'litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team="tier-0", accelerator="None"}'
+        values: '0+2460x60'
+    promql_expr_test:
+      - expr: accelerator:generation_tokens_per_second:rate1h
+        eval_time: 1h
+        exp_samples:
+          - labels: 'accelerator:generation_tokens_per_second:rate1h{accelerator="mac-primary"}'
+            value: 41
+      - expr: accelerator:token_utilization:ratio
+        eval_time: 1h
+        exp_samples:
+          - labels: 'accelerator:token_utilization:ratio{accelerator="mac-primary"}'
+            value: 1
+
   - name: unlabeled sources retain their default accelerator
     interval: 1m
     input_series:
