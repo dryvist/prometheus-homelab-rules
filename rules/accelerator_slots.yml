@@ -8,23 +8,23 @@
 # accelerator:serving_slots and accelerator:context_tokens_per_slot for the GPU
 # lanes come from the serving profile each engine guest declares
 # (llm_serving_declared_slots, llm_serving_declared_context_tokens_per_slot),
-# provenance="profile". mac-primary publishes no declared profile, so its slot
-# stays a configuration constant, provenance="config". A GPU lane with no
+# provenance="profile". The Mac lanes publish no declared profile, so their
+# slots stay configuration constants, provenance="config". A GPU lane with no
 # declared series has no serving slots and counts as 0 duty in the KPI;
 # accelerator:declared_profile_present:bool flags that drift.
 # accelerator:slot_over_capacity:bool flags in-flight requests above the
 # declared slots.
 #
 # gpu-primary and gpu-secondary duty cycles divide engine in-flight requests by
-# slots; consumers take avg_over_time over 4h. mac-primary has no engine
-# in-flight metric yet, so macmon_gpu_active_ratio stands in for its single
+# slots; consumers take avg_over_time over 4h. The Mac lanes have no engine
+# in-flight metric yet, so macmon_gpu_active_ratio stands in for each single
 # serial slot, provenance="proxy".
 groups:
   - name: accelerator-slots
     interval: 1m
     rules:
       # Serving configuration. GPU lanes read the declared serving profile;
-      # mac-primary stays a constant.
+      # the Mac lanes stay constants.
       - record: accelerator:serving_slots
         expr: max by (accelerator) (llm_serving_declared_slots{accelerator="gpu-primary"})
         labels:
@@ -43,6 +43,12 @@ groups:
           accelerator: mac-primary
           provenance: config
 
+      - record: accelerator:serving_slots
+        expr: vector(1)
+        labels:
+          accelerator: mac-secondary
+          provenance: config
+
       - record: accelerator:context_tokens_per_slot
         expr: max by (accelerator) (llm_serving_declared_context_tokens_per_slot{accelerator="gpu-primary"})
         labels:
@@ -59,6 +65,12 @@ groups:
         expr: vector(131072)
         labels:
           accelerator: mac-primary
+          provenance: config
+
+      - record: accelerator:context_tokens_per_slot
+        expr: vector(131072)
+        labels:
+          accelerator: mac-secondary
           provenance: config
 
       # Declared profile drift: 1 while the lane publishes its declared slots,
@@ -117,6 +129,15 @@ groups:
         labels:
           provenance: proxy
 
+      - record: accelerator:slot_duty_cycle:ratio
+        # No engine in-flight metric yet; the GPU active ratio stands in.
+        expr: |
+          avg by (accelerator) (
+            macmon_gpu_active_ratio{job="macmon", accelerator="mac-secondary"}
+          )
+        labels:
+          provenance: proxy
+
       # In-flight requests above the lane's serving slots.
       - record: accelerator:slot_over_capacity:bool
         expr: accelerator:slot_duty_cycle:ratio{accelerator="gpu-primary"} > bool 1
@@ -135,11 +156,11 @@ groups:
           sum (
             accelerator:slot_duty_cycle:ratio
               * on (accelerator)
-            accelerator:context_capacity_tokens{accelerator=~"gpu-primary|gpu-secondary|mac-primary"}
+            accelerator:context_capacity_tokens{accelerator=~"gpu-primary|gpu-secondary|mac-primary|mac-secondary"}
           )
           /
           sum (
-            accelerator:context_capacity_tokens{accelerator=~"gpu-primary|gpu-secondary|mac-primary"}
+            accelerator:context_capacity_tokens{accelerator=~"gpu-primary|gpu-secondary|mac-primary|mac-secondary"}
           )
 
       # VRAM utilization: framebuffer used over used plus free. A GPU appearing

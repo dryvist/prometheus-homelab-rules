@@ -32,6 +32,8 @@ tests:
             value: 2
           - labels: 'accelerator:serving_slots{accelerator="mac-primary", provenance="config"}'
             value: 1
+          - labels: 'accelerator:serving_slots{accelerator="mac-secondary", provenance="config"}'
+            value: 1
       - expr: accelerator:context_tokens_per_slot
         eval_time: 1m
         exp_samples:
@@ -40,6 +42,8 @@ tests:
           - labels: 'accelerator:context_tokens_per_slot{accelerator="gpu-secondary", provenance="profile"}'
             value: 16384
           - labels: 'accelerator:context_tokens_per_slot{accelerator="mac-primary", provenance="config"}'
+            value: 131072
+          - labels: 'accelerator:context_tokens_per_slot{accelerator="mac-secondary", provenance="config"}'
             value: 131072
       # The multiplication matches on accelerator, so the output carries no
       # provenance label.
@@ -51,6 +55,8 @@ tests:
           - labels: 'accelerator:context_capacity_tokens{accelerator="gpu-secondary"}'
             value: 32768
           - labels: 'accelerator:context_capacity_tokens{accelerator="mac-primary"}'
+            value: 131072
+          - labels: 'accelerator:context_capacity_tokens{accelerator="mac-secondary"}'
             value: 131072
       - expr: accelerator:declared_profile_present:bool
         eval_time: 1m
@@ -79,6 +85,8 @@ tests:
         values: '2x5'
       - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-primary"}'
         values: '0.25x5'
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-secondary"}'
+        values: '0.25x5'
     promql_expr_test:
       - expr: accelerator:slot_duty_cycle:ratio
         eval_time: 5m
@@ -89,11 +97,91 @@ tests:
             value: 1
           - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="mac-primary", provenance="proxy"}'
             value: 0.25
+          - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="mac-secondary", provenance="proxy"}'
+            value: 0.25
       - expr: accelerator:slot_utilization:ratio
         eval_time: 5m
         exp_samples:
+          # mac-secondary's constant capacity now weights the KPI denominator.
           - labels: 'accelerator:slot_utilization:ratio'
-            value: 0.4905660377358491
+            value: 0.47368421052631576
+
+  - name: the mac-secondary lane mirrors the mac-primary constants and proxy duty
+    interval: 1m
+    input_series:
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-secondary"}'
+        values: '0.75x5'
+    promql_expr_test:
+      - expr: accelerator:serving_slots{accelerator="mac-secondary"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:serving_slots{accelerator="mac-secondary", provenance="config"}'
+            value: 1
+      - expr: accelerator:context_tokens_per_slot{accelerator="mac-secondary"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:context_tokens_per_slot{accelerator="mac-secondary", provenance="config"}'
+            value: 131072
+      - expr: accelerator:context_capacity_tokens{accelerator="mac-secondary"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:context_capacity_tokens{accelerator="mac-secondary"}'
+            value: 131072
+      - expr: accelerator:slot_duty_cycle:ratio{accelerator="mac-secondary"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="mac-secondary", provenance="proxy"}'
+            value: 0.75
+
+  - name: adding a mac-secondary series leaves the existing lanes' results unchanged
+    interval: 1m
+    input_series:
+      - series: 'llm_serving_declared_slots{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '16x5'
+      - series: 'llm_serving_declared_context_tokens_per_slot{accelerator="gpu-primary", profile="qwen3-27b", engine="vllm"}'
+        values: '98304x5'
+      - series: 'llm_serving_declared_slots{accelerator="gpu-secondary", profile="qwen3-coder", engine="llamacpp"}'
+        values: '2x5'
+      - series: 'llm_serving_declared_context_tokens_per_slot{accelerator="gpu-secondary", profile="qwen3-coder", engine="llamacpp"}'
+        values: '16384x5'
+      - series: 'vllm:num_requests_running{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '8x5'
+      - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-secondary"}'
+        values: '2x5'
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-primary"}'
+        values: '0.25x5'
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-secondary"}'
+        values: '0.9x5'
+    promql_expr_test:
+      # The three existing lanes yield the same samples as before the
+      # mac-secondary series existed.
+      - expr: accelerator:serving_slots{accelerator=~"gpu-primary|gpu-secondary|mac-primary"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:serving_slots{accelerator="gpu-primary", provenance="profile"}'
+            value: 16
+          - labels: 'accelerator:serving_slots{accelerator="gpu-secondary", provenance="profile"}'
+            value: 2
+          - labels: 'accelerator:serving_slots{accelerator="mac-primary", provenance="config"}'
+            value: 1
+      - expr: accelerator:context_tokens_per_slot{accelerator=~"gpu-primary|gpu-secondary|mac-primary"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:context_tokens_per_slot{accelerator="gpu-primary", provenance="profile"}'
+            value: 98304
+          - labels: 'accelerator:context_tokens_per_slot{accelerator="gpu-secondary", provenance="profile"}'
+            value: 16384
+          - labels: 'accelerator:context_tokens_per_slot{accelerator="mac-primary", provenance="config"}'
+            value: 131072
+      - expr: accelerator:slot_duty_cycle:ratio{accelerator=~"gpu-primary|gpu-secondary|mac-primary"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="gpu-primary"}'
+            value: 0.5
+          - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="gpu-secondary"}'
+            value: 1
+          - labels: 'accelerator:slot_duty_cycle:ratio{accelerator="mac-primary", provenance="proxy"}'
+            value: 0.25
 
   - name: a lane with no declared series has no slots and counts 0 in the presence flag
     interval: 1m
@@ -128,8 +216,9 @@ tests:
       - expr: accelerator:slot_utilization:ratio
         eval_time: 5m
         exp_samples:
+          # mac-secondary's constant capacity now weights the KPI denominator.
           - labels: 'accelerator:slot_utilization:ratio'
-            value: 0.4615384615384615
+            value: 0.42857142857142855
 
   - name: fully busy and idle lanes set the KPI to 1 and 0
     interval: 1m
@@ -147,6 +236,8 @@ tests:
       - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-secondary"}'
         values: '2x5'
       - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-primary"}'
+        values: '1x5'
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-secondary"}'
         values: '1x5'
     promql_expr_test:
       - expr: accelerator:slot_utilization:ratio
@@ -172,6 +263,8 @@ tests:
         values: '0x5'
       - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-primary"}'
         values: '0x5'
+      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-secondary"}'
+        values: '0x5'
     promql_expr_test:
       - expr: accelerator:slot_utilization:ratio
         eval_time: 5m
@@ -188,7 +281,7 @@ tests:
         values: '100x5'
       - series: 'llamacpp:requests_processing{job="llm_gpu_engine", accelerator="gpu-primary"}'
         values: '100x5'
-      - series: 'macmon_gpu_active_ratio{job="macmon", accelerator="mac-secondary"}'
+      - series: 'macmon_gpu_active_ratio{job="other", accelerator="mac-secondary"}'
         values: '1x5'
     promql_expr_test:
       - expr: accelerator:slot_duty_cycle:ratio
