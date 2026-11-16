@@ -66,3 +66,25 @@ groups:
           accelerator:generation_tokens_per_second:rate1h{accelerator=~"gpu-primary|gpu-secondary|mac-primary"}
           / on (accelerator)
           accelerator:max_generation_tokens_per_second
+
+      # Prompt cache rate: the KPI shown beside token utilization. Target: at least 0.80.
+      # Share of received prompt tokens that the engine served from its cache instead of computing them
+      # again (cached / received), over the same 1h window as the generation rate. It is stricter than
+      # llm:prefix_cache_hit:ratio5m (cache-block hits over queries), which reads higher.
+      # Only engines that count cached prompt tokens appear; an absent lane is unmeasured, not zero.
+      - record: accelerator:prompt_cache_hit:ratio
+        expr: |
+          sum by (accelerator) (
+            label_replace(
+              rate(vllm:prompt_tokens_cached_total{job="llm_gpu_engine"}[1h]),
+              "accelerator", "gpu-primary", "accelerator", "^$"
+            )
+          )
+          / (
+            sum by (accelerator) (
+              label_replace(
+                rate(vllm:prompt_tokens_total{job="llm_gpu_engine"}[1h]),
+                "accelerator", "gpu-primary", "accelerator", "^$"
+              )
+            ) > 0
+          )

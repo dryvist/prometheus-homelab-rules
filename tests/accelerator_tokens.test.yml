@@ -194,3 +194,29 @@ tests:
             value: 1
           - labels: '{accelerator="gpu-secondary"}'
             value: 1
+
+  - name: prompt cache rate is cached prompt tokens over received prompt tokens
+    interval: 1m
+    input_series:
+      - series: 'vllm:prompt_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '0+60000x60'
+      - series: 'vllm:prompt_tokens_cached_total{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '0+48000x60'
+    promql_expr_test:
+      - expr: accelerator:prompt_cache_hit:ratio
+        eval_time: 1h
+        exp_samples:
+          - labels: 'accelerator:prompt_cache_hit:ratio{accelerator="gpu-primary"}'
+            value: 0.8
+
+  - name: prompt cache rate is absent, not zero, when no prompt tokens arrive
+    interval: 1m
+    input_series:
+      - series: 'vllm:prompt_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '0x60'
+      - series: 'vllm:prompt_tokens_cached_total{job="llm_gpu_engine", accelerator="gpu-primary"}'
+        values: '0x60'
+    promql_expr_test:
+      - expr: accelerator:prompt_cache_hit:ratio
+        eval_time: 1h
+        exp_samples: []
