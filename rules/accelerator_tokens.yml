@@ -53,11 +53,11 @@ groups:
           provenance: provisional
 
       - record: accelerator:max_generation_tokens_per_second
-        # gpu-primary: measured maximum of 893 generation tokens per second, retained from #11 (2026-11-06).
+        # gpu-primary: a round placeholder of 1000 generation tokens per second until a recorded benchmark run replaces it.
         expr: |
           label_replace(
-            label_replace(vector(893), "accelerator", "gpu-primary", "", ""),
-            "provenance", "measured", "", ""
+            label_replace(vector(1000), "accelerator", "gpu-primary", "", ""),
+            "provenance", "provisional", "", ""
           )
           or accelerator:provisional_max_generation_tokens_per_second
 

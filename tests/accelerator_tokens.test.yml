@@ -10,7 +10,7 @@ tests:
     interval: 1m
     input_series:
       - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}'
-        values: '0+53580x60'
+        values: '0+60000x60'
       - series: 'llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator="gpu-secondary"}'
         values: '0+2460x60'
       - series: 'litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team="tier-0"}'
@@ -18,7 +18,7 @@ tests:
       - series: 'litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team="tier-2"}'
         values: '0x55 1260+1260x4'
       - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="gpu-primary", model="model-a"}'
-        values: '0+53580x60'
+        values: '0+60000x60'
       - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="gpu-secondary", model="model-b"}'
         values: '0+2460x60'
       - series: 'litellm_output_tokens_metric_total{job="llm_router", accelerator="cpu", model="model-a"}'
@@ -42,7 +42,7 @@ tests:
     interval: 1m
     input_series:
       - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary", model="a"}'
-        values: '0+23580x60'
+        values: '0+30000x60'
       - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary", model="b"}'
         values: '0+24000x60'
       - series: 'llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator="gpu-primary", model="c"}'
@@ -68,7 +68,7 @@ tests:
         eval_time: 1h
         exp_samples:
           - labels: 'accelerator:generation_tokens_per_second:rate1h{accelerator="gpu-primary"}'
-            value: 893
+            value: 1000
           - labels: 'accelerator:generation_tokens_per_second:rate1h{accelerator="gpu-secondary"}'
             value: 41
           - labels: 'accelerator:generation_tokens_per_second:rate1h{accelerator="mac-primary"}'
@@ -78,8 +78,8 @@ tests:
       - expr: accelerator:max_generation_tokens_per_second
         eval_time: 1h
         exp_samples:
-          - labels: 'accelerator:max_generation_tokens_per_second{accelerator="gpu-primary", provenance="measured"}'
-            value: 893
+          - labels: 'accelerator:max_generation_tokens_per_second{accelerator="gpu-primary", provenance="provisional"}'
+            value: 1000
           - labels: 'accelerator:max_generation_tokens_per_second{accelerator="gpu-secondary", provenance="provisional"}'
             value: 41
           - labels: 'accelerator:max_generation_tokens_per_second{accelerator="mac-primary", provenance="provisional"}'
@@ -115,7 +115,7 @@ tests:
     interval: 1m
     input_series:
       - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", model="a"}'
-        values: '0+26820x60'
+        values: '0+33240x60'
       - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", model="b"}'
         values: '0+26760x60'
       - series: 'llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator=""}'
@@ -172,7 +172,7 @@ tests:
     interval: 1m
     input_series:
       - series: 'vllm:generation_tokens_total{job="llm_gpu_engine", accelerator="gpu-primary"}'
-        values: '0+53580x60'
+        values: '0+60000x60'
       - series: 'llamacpp:tokens_predicted_total{job="llm_gpu_engine", accelerator="gpu-secondary"}'
         values: '0+2460x60'
       - series: 'litellm_output_tokens_metric_total{job="llm_router", model="mlx-community/Qwen3.8-27B-4bit", team="tier-0"}'
@@ -182,7 +182,7 @@ tests:
         eval_time: 1h
         exp_samples:
           - labels: 'accelerator:generation_tokens_per_second:rate1h{accelerator="gpu-primary"}'
-            value: 893
+            value: 1000
           - labels: 'accelerator:generation_tokens_per_second:rate1h{accelerator="gpu-secondary"}'
             value: 41
           - labels: 'accelerator:generation_tokens_per_second:rate1h{accelerator="mac-primary"}'
